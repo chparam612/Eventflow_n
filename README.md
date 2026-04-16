@@ -2,58 +2,52 @@
 
 > Built for **Google Prompt Wars 2026** · Narendra Modi Stadium, Ahmedabad · 132,000 capacity
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Firebase-orange)](https://eventflow-4f04a.web.app)
-[![Tests](https://img.shields.io/badge/Tests-12%20Passing-brightgreen)](#running-tests)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-eventflow--4f04a.web.app-orange)](https://eventflow-4f04a.web.app)
+[![GitHub](https://img.shields.io/badge/GitHub-chparam612%2FEventflow__n-blue)](https://github.com/chparam612/Eventflow_n)
+[![Tests](https://img.shields.io/badge/Tests-38%20Passing-brightgreen)](#running-tests)
 [![Firebase](https://img.shields.io/badge/Firebase-v10.8.0-yellow)](https://firebase.google.com)
 
-✔ **38 automated test cases** covering simulation, real-time sync, edge cases, and system reliability
-✔ **Competition rules met:** Repo size < 10MB, Single Branch, Public Repo, Google Services Integrated
+✔ **38 automated test cases** — simulation, real-time sync, business logic, edge cases  
+✔ **Repo size < 10 MB · Single branch (main) · Public · Google Services integrated**
 
 ---
 
-## Live Demo
+## 🌐 Live URLs
 
 | Panel | URL |
 |-------|-----|
-| 🏠 Landing | `https://eventflow-4f04a.web.app/` |
-| 🎟️ Fan/Attendee | `https://eventflow-4f04a.web.app/attendee` |
-| 🧑‍✈️ Staff | `https://eventflow-4f04a.web.app/staff-login` |
-| 🖥️ Control Room | `https://eventflow-4f04a.web.app/control-login` |
+| 🏠 Landing | [eventflow-4f04a.web.app](https://eventflow-4f04a.web.app/) |
+| 🎟️ Fan/Attendee | [/attendee](https://eventflow-4f04a.web.app/attendee) |
+| 🧑‍✈️ Staff | [/staff-login](https://eventflow-4f04a.web.app/staff-login) |
+| 🖥️ Control Room | [/control-login](https://eventflow-4f04a.web.app/control-login) |
 
 ---
 
-## Problem Statement
+## 🎯 Chosen Vertical: Physical Event Experience
 
-132,000 fans. 9 gates. 8 zones. 1 stadium. On a T20 match day at Narendra Modi Stadium, crowd management happens through walkie-talkies, gut instinct, and overhead cameras. EventFlow V2 replaces this with a **real-time AI-powered system** that connects every stakeholder — fans, ground staff, and control room — in one live loop.
+EventFlow targets cricket match days at Narendra Modi Stadium as the primary use case:
 
----
-
-## Chosen Vertical: Physical Event Experience
-
-EventFlow targets cricket match days as the primary use case, focusing on:
-- **Pre-arrival planning** (reduce gate rush)
-- **In-venue navigation** (find seat without confusion)
-- **Exit orchestration** (stagger the 132K departure into 9 gate flows)
-- **Staff coordination** (instant instruction sync, no radio delays)
+- **Pre-arrival planning** — reduce gate rush by distributing crowd before they arrive
+- **In-venue navigation** — guide fans step-by-step to their seat without confusion
+- **Exit orchestration** — stagger 132K departure into 9 gate flows using AI ranking
+- **Staff coordination** — instant instruction sync from control room, no radio delays
 
 ---
 
-## Approach and Logic
+## 🧠 Approach and Logic
 
 > *"A crowd that knows what to do doesn't need to panic."*
 
-Most crowd incidents happen because people don't have reliable information in real time. EventFlow gives every attendee a **personal plan** before they even arrive — reducing anxiety, distributing crowd load, and preventing dangerous surges.
+Most crowd incidents happen because people don't have reliable real-time information. EventFlow gives every attendee a **personal plan before they even arrive** — reducing anxiety, distributing crowd load, and preventing dangerous surges.
 
 ### Biomimicry Inspiration
-EventFlow is inspired by three natural crowd intelligence systems:
+| Animal | Behaviour | EventFlow Equivalent |
+|--------|-----------|----------------------|
+| 🐜 Ants | Pheromone trails redirect flow | Nudges steer fans from congested zones |
+| 🐟 Fish | Neighbour-aware schooling | Zone density cascades to adjacent zones |
+| 🐝 Bees | Hive broadcasts decisions | Control room dispatches to all staff/fans |
 
-- 🐜 **Ants** — pheromone trails (nudges) redirect fans away from congestion automatically
-- 🐟 **Fish schools** — each zone's density influences neighboring zones' load (cascade awareness)
-- 🐝 **Bees** — the control room acts as the hive brain, receiving signals and broadcasting decisions
-
----
-
-## System Architecture
+### System Architecture
 
 ```
 Fan App ──────────┐
@@ -63,195 +57,172 @@ Staff App ────────┘                    └──────�
       └── Instructions (nudges, directives) ──────────────┘
 ```
 
-Three panels, one live data loop — every action in the control room is reflected in seconds across all staff devices and attendee apps.
+Three panels, one live data loop — every action in the control room reflects in seconds.
 
 ---
 
-## Google Services Used
+## ☁️ Google Services Used
 
-| Service | How Used |
-|---------|----------|
-| **Firebase Realtime Database** | Live 3-panel sync — zones, staff, instructions, nudges update instantly |
-| **Firebase Authentication** | Role-based access — Anonymous (fans), Email (staff/control) |
-| **Firebase Hosting** | Edge-cached PWA deployment with SPA rewrite rules |
-| **Google Maps JS API** | Satellite view of NMS with live zone colour overlays |
-| **Google Gemini API** | AI chat for fans + automated crowd insights for control room |
-| **Google Fonts** | DM Sans + Space Grotesk for premium typography |
+| Service | Integration |
+|---------|-------------|
+| **Firebase Realtime Database** | Live 3-panel sync — zones, staff, instructions, nudges |
+| **Firebase Authentication** | Anonymous (fans) + Email/Password (staff/control) |
+| **Firebase Hosting** | Edge-cached PWA with SPA rewrite rules |
+| **Google Maps JS API** | Satellite view of NMS with live coloured zone overlays |
+| **Gemini 2.0 Flash API** | AI chat for fans + automated crowd insights for control room |
+| **Google Fonts** | DM Sans + Space Grotesk typography |
 
 ---
 
-## How It Works
+## ⚙️ How the Solution Works
 
 ```
-Pre-event  → Fan completes 5-question intake → Gets personalized gate + timeline plan
-Arrival    → Escort screen guides fan step-by-step to their seat
-During     → Live zone status + smart nudges (food/restroom timing)
-Exit       → AI-ranked exit options (leave now / wait 15 / stay for ceremony)
-Post-match → Feedback screen → data feeds into next event improvements
+Pre-event  → Fan answers 5 intake questions → Gets personalized gate + arrival timeline
+Arrival    → Step-by-step escort screen guides fan to their seat
+During     → Live zone density strip + smart nudges (food/restroom timing)
+Exit       → AI-ranked exit options: leave now / wait 15 min / stay for ceremony
+Post-match → Star-rating feedback → data feeds next event improvements
 ```
 
-Staff simultaneously:
-- Toggle zone status (clear / crowded) → updates Firebase instantly
-- Receive control room instructions in real time
+**Staff panel simultaneously:**
+- Toggle zone status (clear / crowded) → Firebase updates instantly
+- Receive control room instructions in real time with acknowledgement
 
-Control room:
-- Scrubs simulation timeline to test scenarios
-- Sends instructions to specific zones
-- Broadcasts nudges to all attendees
-- Gets AI crowd insights every 2 minutes
+**Control room simultaneously:**
+- Scrub a simulation timeline slider (t=0 to t=480 min) to test any scenario
+- Send targeted instructions to specific zones
+- Broadcast nudges to all attendees
+- Get AI-generated crowd insights every 2 minutes (Gemini)
 
 ---
 
-## Demo Instructions (5-minute judge path)
+## 🖥️ Demo Path (5 minutes for judges)
 
-### Step 1 — Control Room (desktop tab)
-1. Go to `/control-login`
+### Step 1 — Control Room *(open on desktop)*
+1. Go to [/control-login](https://eventflow-4f04a.web.app/control-login)
 2. Login: `control@eventflow.demo` / `Control@123`
-3. Scrub the timeline slider to `t=240` (innings break)
-4. Watch North Concourse turn red on the map
-5. Click "Dispatch" on the alert → send instruction to staff
+3. Drag the **Timeline** slider to `t=240` (innings break)
+4. Watch North zone turn **red** on the satellite map
+5. Click **Dispatch** → send instruction to staff
 
-### Step 2 — Staff Panel (mobile or narrow browser)
-1. Open `/staff-login` in a second window
-2. Login: `staff@eventflow.demo` / `Staff@123`, select "North Concourse"
-3. See the instruction appear instantly from control room
-4. Toggle zone to "CROWDED" → watch control room map update
+### Step 2 — Staff Panel *(open in second window)*
+1. Go to [/staff-login](https://eventflow-4f04a.web.app/staff-login)
+2. Login: `staff@eventflow.demo` / `Staff@123`, zone → *North Concourse*
+3. The instruction from Step 1 appears instantly
+4. Toggle zone to **CROWDED** → see map update in control room
 
-### Step 3 — Attendee App (mobile or narrow browser)
-1. Open `/` → tap "Match Attendee"
-2. Complete the 5-question intake
-3. See personalized gate recommendation
-4. Tap 🤖 (AI Chat) → ask "What's the fastest exit?"
-5. Navigate to "During" → see live nudge from control room
+### Step 3 — Attendee App *(open on mobile or narrow window)*
+1. Go to [eventflow-4f04a.web.app](https://eventflow-4f04a.web.app/)
+2. Tap **Match Attendee** (no login needed)
+3. Complete the 5-question intake
+4. Check personalized gate recommendation
+5. Tap 🤖 → ask *"What's the fastest exit?"*
+6. Navigate to **During** → see the live nudge from control room
 
 ---
 
-## Login Credentials
+## 🔑 Login Credentials
 
 | Role | Email | Password |
 |------|-------|----------|
-| Attendee | *(tap "Match Attendee" — no login needed)* | — |
+| Attendee | *(tap "Match Attendee" — anonymous)* | — |
 | Staff | `staff@eventflow.demo` | `Staff@123` |
 | Control Room | `control@eventflow.demo` | `Control@123` |
 
-> Create these accounts in Firebase Console → Authentication → Add users
+> Create these accounts in **Firebase Console → Authentication → Add user**
 
 ---
 
-## Assumptions Made
+## 📌 Assumptions Made
 
 - Stadium coordinates: NMS, Ahmedabad (23.0921°N, 72.5952°E)
-- Match simulation: T20, 18:00 IST start, ~8-hour window
-- Zone overlays are approximate rectangles (not actual polygons)
-- Gemini AI has a graceful text fallback when API key is not set
-- Anonymous auth is required to be enabled in Firebase console
+- Match simulation: T20, 18:00 IST start, 8-hour simulation window
+- Zone overlays are approximate bounding rectangles (not exact CAD polygons)
+- Gemini AI has a graceful hardcoded fallback when the API key is not set
+- Firebase Anonymous Authentication must be enabled in the Firebase console
+- Staff/Control accounts must be manually created in Firebase Authentication
 
 ---
 
-## Local Setup
+## 💻 Local Setup
 
 ```bash
-# 1. Clone
+# Clone
 git clone https://github.com/chparam612/Eventflow_n.git
 cd Eventflow_n
 
-# 2. Start dev server
+# Add your real API keys to:
+# - src/firebase.js     (Firebase config)
+# - src/gemini.js       (Gemini API key)
+# - public/index.html   (Google Maps key)
+
+# Run dev server (no npm install needed)
 node server.js
 
-# 3. Open
-open http://localhost:3000
+# Open
+http://localhost:3000
 ```
 
 ---
 
-## Running Tests
+## 🧪 Running Tests
 
 ```bash
-npm test
-# or
 node tests/core.test.js
 ```
 
-Expected output:
+Expected result:
 ```
-🔹 GROUP 1 — SIMULATION ENGINE
-  ✅ 1. Density always between 0 and 1
-  ...
-🔹 GROUP 2 — BUSINESS LOGIC
-  ✅ 11. Exit plan returns exactly 3 options
-  ...
-🔹 GROUP 3 — DATA INTEGRITY
-  ✅ 17. Zone object structure is valid (name + cap)
-  ...
-🔹 GROUP 4 — FIREBASE LOGIC (mocked)
-  ✅ 23. writeZone does not loop infinitely
-  ...
-🔹 GROUP 5 — AUTH LOGIC
-  ✅ 29. Staff role detection works correctly
-  ...
-🔹 GROUP 6 — EDGE CASES
-  ✅ 33. Zero density handled without errors
-  ...
-
-──────────────────────────────────────────────────
-
-  Results: 38/38 tests passed
-
+Results: 38/38 tests passed
 🎉 All tests passed — EventFlow V2 is stable.
 ```
 
 ---
 
-## Firebase Deployment
+## 🚀 Firebase Deployment
 
 ```bash
-# 1. Build (copies src/ into public/src/)
-node build.js
-
-# 2. Deploy
+node build.js          # copies src/ → public/src/
 firebase login
 firebase deploy
-
-# 3. Update .firebaserc with your actual project ID
 ```
 
 ---
 
-## Future Roadmap
+## 🔮 Future Roadmap
 
-- [ ] Real-time WebRTC video from zone cameras into control room
-- [ ] Bluetooth BLE beacon-based indoor positioning (exact row/seat)
-- [ ] WhatsApp nudge delivery via Twilio/Meta API
-- [ ] Predictive AI (crowd surge prediction 10 min in advance)
-- [ ] Accessibility mode (larger text + screen reader support)
-- [ ] Offline PWA with Service Worker caching
-- [ ] Multi-stadium support (Wankhede, Eden Gardens, etc.)
-
----
-
-## Accessibility
-
-- All buttons have `title` attributes and clear emoji labels
-- Color is never the sole indicator — text labels always accompany status colors
-- Font sizes are minimum 0.78rem (12.5px) throughout
-- High contrast dark theme meets WCAG AA for text on dark backgrounds
-- Touch targets are minimum 44×44px on mobile
+- [ ] WebRTC video from zone cameras into control room
+- [ ] BLE beacon indoor positioning (exact row/seat)
+- [ ] WhatsApp nudges via Meta API
+- [ ] Predictive surge AI (10-minute advance warning)
+- [ ] Service Worker offline PWA caching
+- [ ] Multi-stadium support (Wankhede, Eden Gardens)
 
 ---
 
-## Tech Stack
+## ♿ Accessibility
+
+- All buttons have `title` attributes and emoji labels
+- Color is never the sole status indicator — text labels always accompany colors
+- Minimum font size: 0.78rem (~12.5px) throughout
+- Dark theme meets WCAG AA contrast ratio
+- Touch targets minimum 44×44px on mobile
+
+---
+
+## 🛠️ Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Vanilla JavaScript ES Modules (no framework) |
-| Styling | CSS Variables + Vanilla CSS (no Tailwind) |
+| Frontend | Vanilla JavaScript ES Modules (zero framework) |
+| Styling | CSS Variables + Vanilla CSS |
 | Database | Firebase Realtime Database v10.8.0 |
 | Auth | Firebase Authentication v10.8.0 |
-| Hosting | Firebase Hosting |
-| Maps | Google Maps JavaScript API (satellite) |
+| Hosting | Firebase Hosting (edge-cached) |
+| Maps | Google Maps JavaScript API — satellite + zone overlays |
 | AI | Google Gemini 2.0 Flash |
-| Fonts | Google Fonts (DM Sans + Space Grotesk) |
-| Tests | Node.js (no test framework needed) |
+| Fonts | Google Fonts — DM Sans + Space Grotesk |
+| Tests | Node.js native (no test framework) |
 
 ---
 
