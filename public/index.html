@@ -316,7 +316,7 @@
       window.dispatchEvent(new CustomEvent('mapsReady'));
     };
     const MAPS_KEY = "AIzaSyAB-rkKZiGCOsnWR0gXhMyCOvau0iMYovs";
-    const src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&libraries=maps,marker&v=weekly&loading=async`;
+    const src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&callback=initMap&libraries=maps,marker&v=weekly&loading=async`;
     const script = document.createElement('script');
     script.src = src;
     script.defer = true;
