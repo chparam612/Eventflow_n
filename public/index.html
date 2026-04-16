@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="EventFlow — Smart crowd guide for Narendra Modi Stadium, Ahmedabad">
+  <meta name="theme-color" content="#060A10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>EventFlow — NMS</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-deep: #060A10;
+      --bg-card: #0D1421;
+      --bg-card2: #131C2E;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-accent: rgba(0, 196, 154, 0.25);
+      --green: #00C49A;
+      --green-dim: rgba(0, 196, 154, 0.12);
+      --orange: #FF6B35;
+      --orange-dim: rgba(255, 107, 53, 0.12);
+      --red: #FF4757;
+      --red-dim: rgba(255, 71, 87, 0.1);
+      --yellow: #FFD166;
+      --text-primary: #F0F4F8;
+      --text-secondary: #8899A6;
+      --text-muted: #4A5568;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    html {
+      height: 100%;
+    }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      min-height: 100%;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overscroll-behavior: none;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    .mono,
+    .num {
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    #app {
+      min-height: 100vh;
+    }
+
+    /* Global animations */
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    @keyframes confettiFall {
+      0% {
+        transform: translateY(-10px) rotate(0deg);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease forwards;
+    }
+
+    .slide-up {
+      animation: slideUp 0.35s ease forwards;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+    }
+
+    /* Global form elements */
+    input,
+    select,
+    textarea {
+      font-family: 'DM Sans', sans-serif;
+      background: transparent;
+      border: 1px solid var(--border-accent);
+      color: var(--text-primary);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 0.95rem;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--green);
+    }
+
+    input::placeholder {
+      color: var(--text-muted);
+    }
+
+    select option {
+      background: #0D1421;
+      color: var(--text-primary);
+    }
+
+    /* Buttons */
+    button {
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--green);
+      color: #000;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 13px 20px;
+      font-size: 0.95rem;
+      width: 100%;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: var(--bg-card2);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 11px 20px;
+      font-size: 0.92rem;
+    }
+
+    /* Spinner utility */
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(0, 0, 0, 0.2);
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .spinner-light {
+      border-color: rgba(255, 255, 255, 0.15);
+      border-top-color: var(--green);
+    }
+
+    /* Zone status pills */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    .pill-clear {
+      background: rgba(0, 196, 154, 0.12);
+      color: #00C49A;
+      border: 1px solid rgba(0, 196, 154, 0.25);
+    }
+
+    .pill-busy {
+      background: rgba(255, 209, 102, 0.12);
+      color: #FFD166;
+      border: 1px solid rgba(255, 209, 102, 0.25);
+    }
+
+    .pill-critical {
+      background: rgba(255, 71, 87, 0.12);
+      color: #FF4757;
+      border: 1px solid rgba(255, 71, 87, 0.25);
+    }
+
+    /* Card base */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    /* Full screen page loader */
+    .page-loader {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .page-loader .spinner {
+      width: 32px;
+      height: 32px;
+    }
+
+    /* Error message */
+    .error-msg {
+      background: var(--red-dim);
+      border: 1px solid rgba(255, 71, 87, 0.3);
+      color: var(--red);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 0.88rem;
+      display: none;
+    }
+
+    /* Mobile safe bottom padding */
+    .safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
+  </style>
+
+  <!-- Google Maps: window.initMap MUST be defined before the script tag -->
+  <script>
+    window._mapsReady = false;
+    window.initMap = function () {
+      window._mapsReady = true;
+      window.dispatchEvent(new CustomEvent('mapsReady'));
+    };
+  </script>
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_MAPS_KEY_HERE&callback=initMap&libraries=maps,marker&v=weekly"
+    async defer></script>
+</head>
+
+<body>
+  <div id="app">
+    <div class="page-loader">
+      <div class="spinner spinner-light" style="width:36px;height:36px;"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initRouter } from '/src/router.js';
+    initRouter();
+  </script>
+</body>
+
+</html>

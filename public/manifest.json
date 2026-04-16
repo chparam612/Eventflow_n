@@ -1,0 +1,20 @@
+{
+  "name": "EventFlow — NMS Crowd Guide",
+  "short_name": "EventFlow",
+  "description": "Smart crowd management for Narendra Modi Stadium",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060A10",
+  "theme_color": "#00C49A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "navigation"],
+  "lang": "en"
+}

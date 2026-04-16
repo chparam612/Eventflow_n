@@ -1,0 +1,15 @@
+{
+  "name": "eventflow-v2",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "EventFlow V2 — Real-time crowd management for Narendra Modi Stadium",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/core.test.js",
+    "build": "node build.js"
+  },
+  "keywords": ["crowd-management", "firebase", "gemini-ai", "google-maps", "stadium"],
+  "author": "EventFlow Team",
+  "license": "MIT",
+  "engines": { "node": ">=18.0.0" }
+}

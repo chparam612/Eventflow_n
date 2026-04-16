@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#060A10" />
+  <meta name="description" content="EventFlow V2 — Real-time crowd management system for large stadiums. Monitor, manage, and navigate stadium crowds with AI-powered insights." />
+  <meta property="og:title" content="EventFlow V2 — Smart Crowd Management" />
+  <meta property="og:description" content="Real-time crowd intelligence for Narendra Modi Stadium and beyond." />
+  <title>EventFlow V2 — Crowd Intelligence</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="src/index.css" />
+
+  <!-- Firebase v10 -->
+  <script type="module" src="src/firebase.js"></script>
+
+  <!-- App Entry -->
+  <script type="module" src="src/router.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div id="loading-screen" class="loading-screen">
+      <div class="loading-logo">
+        <div class="logo-mark">
+          <span class="logo-hex">⬡</span>
+          <span class="logo-hex logo-hex--2">⬡</span>
+        </div>
+        <h1 class="loading-title">EventFlow</h1>
+        <p class="loading-sub">V2 · Crowd Intelligence</p>
+      </div>
+      <div class="loading-bar">
+        <div class="loading-bar__fill" id="loading-bar-fill"></div>
+      </div>
+      <p class="loading-status" id="loading-status">Initializing systems…</p>
+    </div>
+  </div>
+
+  <!-- Connection status badge -->
+  <div id="connection-badge" class="connection-badge connection-badge--connected" aria-live="polite">
+    <span class="connection-dot"></span>
+    <span class="connection-text">Connected</span>
+  </div>
+
+  <!-- Demo mode badge -->
+  <div id="demo-badge" class="demo-badge" style="display:none;">
+    <span>⚡ Demo Mode</span>
+  </div>
+</body>
+</html>

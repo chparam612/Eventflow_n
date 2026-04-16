@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "zones": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email.contains('control')"
+    },
+    "staff": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "instructions": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email.contains('control')"
+    },
+    "nudges": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email.contains('control')"
+    },
+    "attendees": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "feedback": {
+      ".write": "auth != null",
+      ".read": "auth != null && auth.token.email.contains('control')"
+    }
+  }
+}
