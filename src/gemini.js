@@ -37,11 +37,15 @@ async function callGemini(prompt, maxTokens = 200) {
         }
       })
     });
+    if (res.status === 429) {
+      // Suppress console error and return graceful string indicating rate limit
+      return "Notice: Currently experiencing high traffic. AI functionality conditionally paused. Route guidance nominal.";
+    }
     if (!res.ok) throw new Error('API ' + res.status);
     const data = await res.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
   } catch (e) {
-    console.warn('[Gemini] Call failed:', e.message);
+    if (!e.message.includes('429')) console.warn('[Gemini] Call failed:', e.message);
     return null;
   }
 }
