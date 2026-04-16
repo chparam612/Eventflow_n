@@ -48,29 +48,31 @@ async function callGemini(prompt, maxTokens = 200) {
 
 // ─── Attendee Chat ─────────────────────────────────────────────────────────
 export async function askAttendee(message, crowdContext) {
-  const ctxStr = crowdContext
-    ? '\nLive zone data: ' + Object.entries(crowdContext)
-      .map(([z, d]) => `${z}:${Math.round(d * 100)}%`)
-      .join(', ')
+  const ctx = crowdContext ? 
+    '\nLive NMS crowd data: ' + JSON.stringify(crowdContext) 
     : '';
-
-  const prompt = ATTENDEE_SYSTEM + ctxStr + '\n\nFan question: ' + message;
-  const reply = await callGemini(prompt, 150);
-
-  // Fallback responses keyed to common queries
-  if (!reply) {
-    const lc = message.toLowerCase();
-    if (lc.includes('gate') || lc.includes('enter'))
-      return 'Head to Gate B on the North side — it\'s the least crowded right now. Walk time is about 5 minutes from parking.';
-    if (lc.includes('food') || lc.includes('eat'))
-      return 'Best time for food is the first 30 minutes — concession lines are shorter on the West concourse right now.';
-    if (lc.includes('exit') || lc.includes('leave'))
-      return 'For the smoothest exit, leave 10 minutes before the final over, or wait 20 minutes after the match — Gate G South is quickest.';
-    if (lc.includes('park') || lc.includes('car'))
-      return 'P2 South has the most space right now. Exit via Gate G and follow the orange signs — about 8 minutes walk.';
-    return 'I\'m temporarily offline. Check the venue screens or ask any ground staff member in the orange vest for assistance.';
+  
+  try {
+    const reply = await callGemini(
+      ATTENDEE_SYSTEM + ctx + '\n\nFan question: ' + message
+    );
+    if (reply) return reply;
+    throw new Error('empty response');
+  } catch(e) {
+    // Fallback with helpful info from context
+    const densities = crowdContext || {};
+    const clearZones = Object.entries(densities)
+      .filter(([z, d]) => d < 0.6)
+      .map(([z]) => z.replace(' Stand',''))
+      .slice(0,2);
+    
+    if (clearZones.length > 0) {
+      return 'Based on current data: ' + 
+        clearZones.join(' and ') + 
+        ' areas are clear right now. Head to Gate B for the smoothest entry.';
+    }
+    return 'Gate B is currently the least crowded entrance. For food, North concourse has shorter lines right now.';
   }
-  return reply;
 }
 
 // ─── Control Room AI Insights ──────────────────────────────────────────────

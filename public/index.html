@@ -310,15 +310,16 @@
 
   <!-- Google Maps: window.initMap MUST be defined before the script tag -->
   <script>
-    window._mapsReady = false;
-    window.initMap = function () {
+    window.initMap = function() {
+      console.log('Google Maps ready');
       window._mapsReady = true;
       window.dispatchEvent(new CustomEvent('mapsReady'));
     };
   </script>
-  <script
+  <script 
     src="https://maps.googleapis.com/maps/api/js?key=YOUR_MAPS_KEY_HERE&callback=initMap&libraries=maps,marker&v=weekly"
-    async defer></script>
+    defer>
+  </script>
 </head>
 
 <body>

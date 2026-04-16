@@ -481,6 +481,46 @@ export async function init(navigate) {
     if (metricAvg) metricAvg.textContent = Math.round(avg * 100) + '%';
   }
 
+  async function autoAlertCheck(densities) {
+    const criticalZones = Object.entries(densities)
+      .filter(([id, d]) => d > 0.8)
+      .map(([id, d]) => ({ id, density: d }));
+    
+    for (const zone of criticalZones) {
+      // Auto-push instruction to staff
+      const zoneNames = {
+        north: 'North Stand', south: 'South Stand',
+        east: 'East Stand', west: 'West Stand',
+        concN: 'North Concourse', concS: 'South Concourse',
+        gates: 'Gate Area', parking: 'Parking Zone'
+      };
+      const name = zoneNames[zone.id] || zone.id;
+      const pct = Math.round(zone.density * 100);
+      
+      // Only alert if not alerted in last 5 minutes
+      const lastAlert = sessionStorage.getItem('alert:'+zone.id);
+      const now = Date.now();
+      if (lastAlert && now - parseInt(lastAlert) < 300000) continue;
+      
+      sessionStorage.setItem('alert:'+zone.id, now.toString());
+      
+      // Auto-dispatch to staff
+      await pushInstruction(
+        zone.id,
+        `AUTO-ALERT: ${name} at ${pct}% capacity. Redirect crowd to adjacent gates.`,
+        'system'
+      );
+      
+      // Auto-nudge attendees
+      await pushNudge(
+        zone.id,
+        `${name} is getting crowded. Alternative routes are available nearby.`
+      );
+      
+      console.log('Auto-alert sent for:', name, pct + '%');
+    }
+  }
+
   // Init map when ready
   if (window._mapsReady) {
     initMap();
@@ -510,6 +550,8 @@ export async function init(navigate) {
     for (const [id, d] of Object.entries(densities)) {
       await writeZone(id, d, getZoneStatus(d));
     }
+
+    await autoAlertCheck(densities);
   }
 
   const ctrlTimeEl = document.getElementById('ctrl-time');

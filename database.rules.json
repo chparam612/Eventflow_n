@@ -1,7 +1,7 @@
 {
   "rules": {
     "zones": {
-      ".read": "true",
+      ".read": "auth != null",
       ".write": "auth != null && auth.token.email.contains('control')"
     },
     "staff": {
@@ -15,7 +15,7 @@
       ".write": "auth != null && auth.token.email.contains('control')"
     },
     "nudges": {
-      ".read": "true",
+      ".read": "auth != null",
       ".write": "auth != null && auth.token.email.contains('control')"
     },
     "attendees": {
@@ -25,7 +25,7 @@
       }
     },
     "feedback": {
-      ".write": "true",
+      ".write": "auth != null",
       ".read": "auth != null && auth.token.email.contains('control')"
     }
   }
