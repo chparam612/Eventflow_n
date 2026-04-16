@@ -128,7 +128,7 @@ function renderIntake() {
 
     <!-- Header -->
     <div style="display:flex;align-items:center;gap:12px;">
-      <button onclick="window._attBack()" style="
+      <button onclick="window._attBack()" aria-label="Go back to previous screen" style="
         background:var(--bg-card);border:1px solid var(--border);
         border-radius:8px;width:34px;height:34px;
         color:var(--text-secondary);font-size:1rem;cursor:pointer;
@@ -419,7 +419,7 @@ function renderEscort(mode = 'arrival') {
           font-size:0.9rem;transition:all 0.2s;opacity:0.4;" disabled>
           ← Back
         </button>
-        <button id="escort-next-btn" style="
+        <button id="escort-next-btn" aria-label="Next step" style="
           flex:2;background:#00C49A;border:none;
           border-radius:12px;padding:14px;
           color:#000;font-weight:700;cursor:pointer;

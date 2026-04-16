@@ -8,7 +8,7 @@
 [![Firebase](https://img.shields.io/badge/Firebase-v10.8.0-yellow)](https://firebase.google.com)
 
 ✔ **38 automated test cases** — simulation, real-time sync, business logic, edge cases  
-✔ **Repo size < 10 MB · Single branch (main) · Public · Google Services integrated**
+✔ **Repo size < 1 MB · Single branch (main) · Public · Google Services integrated**
 
 ---
 
@@ -135,7 +135,7 @@ Post-match → Star-rating feedback → data feeds next event improvements
 
 ## 📌 Assumptions Made
 
-- Stadium coordinates: NMS, Ahmedabad (23.0921°N, 72.5952°E)
+- Stadium coordinates: NMS, Ahmedabad (23.0918°N, 72.5972°E)
 - Match simulation: T20, 18:00 IST start, 8-hour simulation window
 - Zone overlays are approximate bounding rectangles (not exact CAD polygons)
 - Gemini AI has a graceful hardcoded fallback when the API key is not set
@@ -153,7 +153,6 @@ cd Eventflow_n
 
 # Add your real API keys to:
 # - src/firebase.js     (Firebase config)
-# - src/gemini.js       (Gemini API key)
 # - public/index.html   (Google Maps key)
 
 # Run dev server (no npm install needed)
