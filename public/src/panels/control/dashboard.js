@@ -12,6 +12,7 @@ import {
   getZoneDensity, getZoneStatus, getStatusColor, ZONES
 } from '/src/simulation.js';
 import { getAIInsights } from '/src/gemini.js';
+import { predictFutureDensity, detectSurgeRisk } from '/src/predictiveEngine.js';
 
 // NMS approximate bounding coords for each zone overlay
 const ZONE_BOUNDS = {
@@ -152,6 +153,19 @@ export function render() {
             🚨 Live Alerts</div>
           <div id="alert-list" style="display:flex;flex-direction:column;gap:6px;">
             <div style="color:var(--text-muted);font-size:0.8rem;">All zones normal</div>
+          </div>
+        </div>
+
+        <div style="height:1px;background:var(--border);"></div>
+
+        <!-- Predictive Alerts -->
+        <div>
+          <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
+            color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
+            🔮 Predictive Alerts</div>
+          <div id="predictive-alerts" aria-label="Predicted congestion alerts" 
+               style="display:flex;flex-direction:column;gap:6px;">
+            <div style="color:var(--text-muted);font-size:0.8rem;">No surges predicted</div>
           </div>
         </div>
 
@@ -458,12 +472,37 @@ export async function init(navigate) {
     mapInstance.fitBounds(mapBounds);
   }
 
-  function updateMapOverlays(densities) {
+  function renderPredictiveAlerts(predictions) {
+    const el = document.getElementById('predictive-alerts');
+    if (!el) return;
+    const risky = Object.entries(predictions).filter(([, p]) => p.risk);
+    if (risky.length === 0) {
+      el.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;">No surges predicted</div>';
+      return;
+    }
+    el.innerHTML = risky.map(([id, p]) => {
+      const name = ZONES[id]?.name || id;
+      const color = p.level === 'HIGH' ? '#A29BFE' : '#FFD166';
+      return `
+        <div style="background:rgba(162,155,254,0.08);border:1px solid ${color}44;
+          border-radius:10px;padding:10px 12px;">
+          <div style="font-size:0.75rem;font-weight:600;color:${color};margin-bottom:3px;">
+            ⚠️ Surge Risk: ${p.level}</div>
+          <div style="font-size:0.8rem;color:var(--text-primary);margin-bottom:4px;">
+            ${name} predicted at ${p.percent}% in 10m</div>
+        </div>`;
+    }).join('');
+  }
+
+  function updateMapOverlays(densities, predictions = {}) {
     lastDensities = densities;
     Object.entries(zoneRectangles).forEach(([id, rect]) => {
       const d = densities[id] || 0;
+      const pred = predictions[id]?.risk && predictions[id]?.percent >= 90;
+      
       let color, opacity;
-      if (d >= 0.8) { color = '#FF4757'; opacity = 0.45; }
+      if (pred) { color = '#A29BFE'; opacity = 0.55; } // Purple for Predicted Surge
+      else if (d >= 0.8) { color = '#FF4757'; opacity = 0.45; }
       else if (d >= 0.6) { color = '#FFD166'; opacity = 0.35; }
       else { color = '#00C49A'; opacity = 0.25; }
       rect.setOptions({ fillColor: color, fillOpacity: opacity, strokeColor: color });
@@ -519,6 +558,18 @@ export async function init(navigate) {
       
       console.log('Auto-alert sent for:', name, pct + '%');
     }
+  function calculatePredictions(densities) {
+    const predictions = {};
+    Object.keys(densities).forEach(id => {
+      const pred = predictFutureDensity({
+        id,
+        currentFans: (densities[id] || 0) * (ZONES[id]?.cap || 10000),
+        capacity: ZONES[id]?.cap || 10000
+        // entry/exit rates will use defaults in predictFutureDensity
+      });
+      predictions[id] = detectSurgeRisk(pred.predictedPercent);
+    });
+    return predictions;
   }
 
   // Init map when ready
@@ -531,9 +582,11 @@ export async function init(navigate) {
   // ── Simulation auto-tick every 5s ──
   async function doTick() {
     const densities = simulateTick();
-    updateMapOverlays(densities);
+    const predictions = calculatePredictions(densities);
+    updateMapOverlays(densities, predictions);
     updateMetrics(densities);
     renderAlerts(densities);
+    renderPredictiveAlerts(predictions);
 
     // Update scrubber
     const tick = getTick();
@@ -574,9 +627,11 @@ export async function init(navigate) {
       const { getZoneDensity } = window._efSim || {};
       import('/src/simulation.js').then(m => res(m.getZoneDensity()));
     });
-    updateMapOverlays(densities);
+    const predictions = calculatePredictions(densities);
+    updateMapOverlays(densities, predictions);
     updateMetrics(densities);
     renderAlerts(densities);
+    renderPredictiveAlerts(predictions);
     for (const [id, d] of Object.entries(densities)) {
       await writeZone(id, d, getZoneStatus(d));
     }
@@ -587,9 +642,11 @@ export async function init(navigate) {
     const densities = {};
     Object.entries(zones).forEach(([id, z]) => { densities[id] = z.density || 0; });
     if (Object.keys(densities).length > 0) {
-      updateMapOverlays(densities);
+      const predictions = calculatePredictions(densities);
+      updateMapOverlays(densities, predictions);
       updateMetrics(densities);
       renderAlerts(densities);
+      renderPredictiveAlerts(predictions);
     }
   });
   cleanupFirebase.push(unListenZones);

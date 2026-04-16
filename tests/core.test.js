@@ -8,6 +8,8 @@
 
 'use strict';
 
+import { predictFutureDensity, detectSurgeRisk } from '../src/predictiveEngine.js';
+
 // ──────────────────────────────────────────────────────────
 // MOCK INFRASTRUCTURE
 // ──────────────────────────────────────────────────────────
@@ -602,6 +604,44 @@ await test('38. Empty Firebase snapshot handled safely (no crash)', () => {
     threw = true;
   }
   assert(!threw, 'Empty snapshot should not cause crash');
+});
+
+// ──────────────────────────────────────────────────────────
+// GROUP 7 — PREDICTIVE INTELLIGENCE (3 tests)
+// ──────────────────────────────────────────────────────────
+group('🔹 GROUP 7 — PREDICTIVE INTELLIGENCE');
+
+await test('39. Prediction Math (Future > Current when entry > exit)', () => {
+  const zone = {
+    currentFans: 800,
+    entryRate: 20,
+    exitRate: 5,
+    capacity: 1000
+  };
+  const { futureFans } = predictFutureDensity(zone);
+  assert(futureFans > zone.currentFans, `Predicted fans (${futureFans}) should be > current (${zone.currentFans})`);
+  assertEqual(futureFans, 950, `Expected 800 + (20-5)*10 = 950, got ${futureFans}`);
+});
+
+await test('40. Surge Detection (Risk = TRUE if >= 90%)', () => {
+  const result1 = detectSurgeRisk(90);
+  const result2 = detectSurgeRisk(89);
+  assertEqual(result1.risk, true, '90% should be risky');
+  assertEqual(result1.level, 'HIGH', '90% should be HIGH risk');
+  assertEqual(result2.risk, true, '89% should still be risky (MEDIUM)');
+  assertEqual(result2.level, 'MEDIUM', '89% should be MEDIUM risk');
+});
+
+await test('41. Boundary Safety (No overflow/underflow)', () => {
+  // Test overflow
+  const zoneOver = { currentFans: 950, entryRate: 100, exitRate: 0, capacity: 1000 };
+  const resOver = predictFutureDensity(zoneOver);
+  assertEqual(resOver.futureFans, 1000, 'Should cap at capacity');
+  
+  // Test underflow
+  const zoneUnder = { currentFans: 50, entryRate: 0, exitRate: 100, capacity: 1000 };
+  const resUnder = predictFutureDensity(zoneUnder);
+  assertEqual(resUnder.futureFans, 0, 'Should floor at 0');
 });
 
 // ──────────────────────────────────────────────────────────
