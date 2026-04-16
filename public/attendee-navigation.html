@@ -87,9 +87,21 @@
   <div id="map" aria-label="Attendee navigation dashboard"></div>
   
   <div class="panel">
+    <!-- UI Controllers -->
+    <div style="display:flex; gap:10px; margin-bottom:12px;">
+      <select id="start-zone" style="flex:1; padding:8px; background:var(--bg-deep); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-family:'DM Sans', sans-serif;">
+      </select>
+      <span style="display:flex; align-items:center; color:var(--text-secondary);">→</span>
+      <select id="dest-zone" style="flex:1; padding:8px; background:var(--bg-deep); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-family:'DM Sans', sans-serif;">
+      </select>
+    </div>
+    <button id="btn-calc-route" style="width:100%; padding:10px; margin-bottom:16px; background:#4A90E2; color:#FFF; font-weight:bold; border:none; border-radius:8px; cursor:pointer; font-family:'DM Sans', sans-serif;">Calculate Route</button>
+
     <h2>🧭 Your Route <span id="nav-eta" style="color:var(--green); font-size: 1rem;">-- min</span></h2>
-    <div class="route-steps" id="nav-path">Calculating best route...</div>
+    <div class="route-steps" id="nav-path" style="margin-bottom:12px;">Calculating best route...</div>
     
+    <div id="instructions-panel" style="margin-bottom:16px; font-size:0.9rem; color:var(--text-secondary); line-height:1.6; display:flex; flex-direction:column; gap:4px;"></div>
+
     <div id="nav-suggestion" class="suggestion">
       <div style="font-family:'Space Grotesk',sans-serif; text-transform:uppercase; font-size:0.75rem; letter-spacing:0.05em; margin-bottom:4px;">Smart Suggestion</div>
       <div id="nav-suggestion-text">Analyzing conditions...</div>
@@ -98,7 +110,7 @@
 
   <script type="module">
     import { listenZones, listenEmergency } from '/src/firebase.js';
-    import { findBestRoute } from '/src/pathfindingEngine.js';
+    import { findBestRoute, findAlternatePath } from '/src/pathfindingEngine.js';
     import { ZONES } from '/src/simulation.js';
     import { zoneCoordinates, getZonePosition } from '/src/zoneCoordinates.js';
     import { zoneGraph } from '/src/zoneGraph.js';
@@ -173,21 +185,41 @@
     }
 
     let goldLines = [];
+    let blueLines = [];
 
     function clearGoldRoutes() {
-      goldLines.forEach(line => {
-        line.setMap(null);
-      });
+      goldLines.forEach(line => line.setMap(null));
       goldLines = [];
+    }
+    
+    function clearBlueRoutes() {
+      blueLines.forEach(line => line.setMap(null));
+      blueLines = [];
+    }
+
+    function drawAlternateRoute(path) {
+      if (!path || path.length < 2) return;
+      clearBlueRoutes();
+      for (let i = 0; i < path.length - 1; i++) {
+        const start = zoneCoordinates[path[i]];
+        const end = zoneCoordinates[path[i + 1]];
+        if (!start || !end) continue;
+        const blueLine = new google.maps.Polyline({
+          path: [start, end],
+          strokeColor: "#4285F4",
+          strokeOpacity: 0.7,
+          strokeWeight: 4,
+          geodesic: true,
+          zIndex: 5,
+          map: window.efMap
+        });
+        blueLines.push(blueLine);
+      }
     }
 
     function drawBestRoute(path) {
-      if (!path || path.length < 2) {
-        console.error("Invalid path:", path);
-        return;
-      }
-      
-      clearGoldRoutes(); // Remove old gold routes before drawing
+      if (!path || path.length < 2) return;
+      clearGoldRoutes();
 
       for (let i = 0; i < path.length - 1; i++) {
         const start = zoneCoordinates[path[i]];
@@ -197,14 +229,9 @@
         if (!start || !end) continue;
 
         const density = zoneDensityMap[endNode] || 0;
-        let color = "#00C49A";
-
-        if (density >= 50 && density <= 80) {
-          color = "#FFD700";
-        }
-        if (density > 80) {
-          color = "#FF4D4D";
-        }
+        let color = "#00C49A"; // Low
+        if (density >= 50 && density <= 80) color = "#FFD700"; // Medium
+        if (density > 80) color = "#FF4D4D"; // High
 
         const goldLine = new google.maps.Polyline({
           path: [start, end],
@@ -212,7 +239,7 @@
           strokeOpacity: 1,
           strokeWeight: 6,
           geodesic: true,
-          zIndex: 10, // Ensure it appears ABOVE green lines
+          zIndex: 10,
           map: window.efMap
         });
         
@@ -229,50 +256,101 @@
       return steps * timePerStep;
     }
 
+    // Instruction System
+    function generateInstructions(path) {
+      const container = document.getElementById("instructions-panel");
+      if (!path || path.length < 2) {
+         container.innerHTML = "<div>No valid route instructions available.</div>";
+         return;
+      }
+      let html = "";
+      path.forEach((zone, index) => {
+         const zoneName = ZONES[zone]?.name || zone;
+         if (index === 0) html += `<div><b>${index + 1}.</b> Start at ${zoneName}</div>`;
+         else if (index === path.length - 1) html += `<div><b>${index + 1}.</b> Exit to ${zoneName}</div>`;
+         else html += `<div><b>${index + 1}.</b> Continue to ${zoneName}</div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    // Moving Simulation Node
+    let simMarker = null;
+    let simInterval = null;
+
+    function startMarkerSimulation(path) {
+      if (simMarker) simMarker.setMap(null);
+      if (simInterval) clearInterval(simInterval);
+      if (!window.efMap || !path || path.length === 0) return;
+
+      let currentIndex = 0;
+      simMarker = new google.maps.Marker({
+        position: zoneCoordinates[path[0]],
+        map: window.efMap,
+        icon: {
+           path: google.maps.SymbolPath.CIRCLE,
+           scale: 8,
+           fillColor: "#FFFFFF",
+           fillOpacity: 1,
+           strokeColor: "#2D2D2D",
+           strokeWeight: 2
+        },
+        zIndex: 100
+      });
+
+      simInterval = setInterval(() => {
+        currentIndex++;
+        if (currentIndex >= path.length) {
+          clearInterval(simInterval);
+          return;
+        }
+        const coords = zoneCoordinates[path[currentIndex]];
+        if (coords) simMarker.setPosition(coords);
+      }, 1000); // 1 zone per second
+    }
+
     let currentDensities = {};
     let isEmergency = false;
     let emergencyZone = null;
-    let startZone = localStorage.getItem('ef_start_zone') || 'north';
+    
+    function populateDropdowns() {
+      const startSelect = document.getElementById("start-zone");
+      const destSelect = document.getElementById("dest-zone");
+      Object.keys(zoneCoordinates).forEach(zone => {
+         const name = ZONES[zone]?.name || zone;
+         startSelect.add(new Option(name, zone));
+         destSelect.add(new Option(name, zone));
+      });
+      startSelect.value = "parking";
+      destSelect.value = "north";
+      
+      document.getElementById("btn-calc-route").addEventListener("click", updateNavigation);
+    }
 
     function updateNavigation() {
-      console.log("updateNavigation START", startZone);
-      const startTime = performance.now();
-      
-      // Map densities to pathfinding engine schema
+      const startZone = document.getElementById("start-zone").value;
+      const destinationZone = document.getElementById("dest-zone").value;
+
       const enrichedZones = Object.entries(currentDensities).map(([id, d]) => {
         const zDef = ZONES[id] || {};
         return {
-          id,
-          capacity: zDef.cap || 10000,
-          currentFans: Math.round(d * (zDef.cap || 10000)),
-          blocked: (isEmergency && emergencyZone === id)
+          id, capacity: zDef.cap || 10000, currentFans: Math.round(d * (zDef.cap || 10000)), blocked: (isEmergency && emergencyZone === id)
         };
       });
 
-      console.log("Enriched zones calculation complete");
-
-      // 1. Calculate Path
-      let pathResult;
-      try {
-        pathResult = findBestRoute(startZone, enrichedZones);
-        console.log("findBestRoute success:", pathResult);
-      } catch (e) {
-        console.error("findBestRoute CRASHED:", e);
-        return;
-      }
-      const { path } = pathResult;
+      // 1. Calculate Routes
+      let pathResult = findBestRoute(startZone, destinationZone, enrichedZones);
+      const path = pathResult.path;
       
-      const calcTime = performance.now() - startTime;
-      if (calcTime > 50) console.warn(`Pathfinding took > 50ms: ${calcTime}ms`);
+      let altResult = findAlternatePath(startZone, destinationZone, path, enrichedZones);
 
-      // 2. Map Update (Polyline)
-      const renderStart = performance.now();
+      // 2. Map Update (Primary + Alternate)
       if (window.efMap) {
-        console.log("Updating polyline on map");
         drawBestRoute(path);
+        if (altResult && altResult.path) drawAlternateRoute(altResult.path);
+        else clearBlueRoutes();
+        
+        startMarkerSimulation(path);
       }
-      const renderTime = performance.now() - renderStart;
-      if (renderTime > 30) console.warn(`Polyline redraw took > 30ms: ${renderTime}ms`);
 
       // 3. Update DOM Panel
       const pathText = path.map(p => ZONES[p]?.name?.replace(' Stand','') || p).join(' → ');
@@ -281,10 +359,7 @@
       const time = calculateRouteTime(path);
       document.getElementById('nav-eta').innerText = "~" + time + " min";
       
-      console.log("Best Path After Density:", path);
-      console.log("Route Time:", time);
-
-      // 6. Fix Smart Message Logic
+      generateInstructions(path);
       updateSmartMessage(path);
     }
 
@@ -350,6 +425,8 @@
 
 
     async function startNavigation() {
+      populateDropdowns();
+      
       console.log("Authenticating anonymous session...");
       try {
         await loginAnonymously();

@@ -60,18 +60,31 @@ function hashState(startZone, zones) {
  * STEP 3 — IMPLEMENT DIJKSTRA ALGORITHM
  * 
  * @param {string} startZone 
+ * @param {string} destinationZone
  * @param {Array} zones - Array of { id, currentFans, capacity, blocked }
+ * @param {Object} penalties - Dynamic penalty configuration map.
  * @returns {Object} { path: [], totalCost: number }
  */
-export function findBestRoute(startZone, zones = []) {
-  if (!graph[startZone]) {
-    // STEP 11 — FALLBACK SAFETY
-    return { path: [startZone], totalCost: 0 };
-  }
+export function findBestRoute(startZone, destinationZone, zones = [], penalties = {}) {
+  // 1. Build an undirected graph dynamically for bidirectional support
+  const undirectedGraph = {};
+  Object.keys(graph).forEach(node => { undirectedGraph[node] = []; });
+  Object.keys(graph).forEach(node => {
+    graph[node].forEach(edge => {
+      // Add forward edge
+      if (!undirectedGraph[node].find(e => e.node === edge.node)) {
+        undirectedGraph[node].push(edge);
+      }
+      // Add reverse edge
+      if (!undirectedGraph[edge.node]) undirectedGraph[edge.node] = [];
+      if (!undirectedGraph[edge.node].find(e => e.node === node)) {
+        undirectedGraph[edge.node].push({ node, distance: edge.distance });
+      }
+    });
+  });
 
-  const cacheKey = hashState(startZone, zones);
-  if (routeCache[cacheKey]) {
-    return routeCache[cacheKey]; // Return reused cached route
+  if (!undirectedGraph[startZone] || !undirectedGraph[destinationZone]) {
+    return { path: [startZone], totalCost: 0 };
   }
 
   const zoneDataMap = {};
@@ -79,10 +92,10 @@ export function findBestRoute(startZone, zones = []) {
     zoneDataMap[z.id] = z;
   }
 
-  // Dijkstra initialization
+  // Dijkstra init
   const distances = {};
   const previous = {};
-  const unvisited = new Set(Object.keys(graph));
+  const unvisited = new Set(Object.keys(undirectedGraph));
 
   for (const node of unvisited) {
     distances[node] = Infinity;
@@ -91,7 +104,6 @@ export function findBestRoute(startZone, zones = []) {
   distances[startZone] = 0;
 
   while (unvisited.size > 0) {
-    // Find node with minimum distance
     let current = null;
     let minDistance = Infinity;
     
@@ -102,33 +114,30 @@ export function findBestRoute(startZone, zones = []) {
       }
     }
 
-    // Graph disconnected or target reached and unvisited populated
-    if (current === null || minDistance === Infinity) break;
+    if (current === null || current === destinationZone || minDistance === Infinity) break;
 
     unvisited.delete(current);
 
-    // If terminal node (exit) and we're looking for any exit, we can stop early, 
-    // but Dijkstra traditionally processes all to find shortest to all.
-    const neighbors = graph[current] || [];
+    const neighbors = undirectedGraph[current] || [];
     for (const neighbor of neighbors) {
       if (!unvisited.has(neighbor.node)) continue;
 
       const neighborZone = zoneDataMap[neighbor.node];
-      
-      // Avoid blocked zones completely
-      if (neighborZone && neighborZone.blocked) {
-        continue;
-      }
+      if (neighborZone && neighborZone.blocked) continue;
 
-      // Fallback density map setup if not running via updateDensityMap route (safety)
       if (!zoneDensityMap[neighbor.node]) {
         const capacity = neighborZone && neighborZone.capacity ? neighborZone.capacity : 10000;
         const currentFans = neighborZone && neighborZone.currentFans ? neighborZone.currentFans : 0;
         zoneDensityMap[neighbor.node] = (currentFans / capacity) * 100;
       }
 
-      // STEP 4 — MODIFY DIJKSTRA WITH DYNAMIC WEIGHT
-      const stepCost = getDynamicWeight(neighbor.node, neighbor.distance);
+      // Density dynamic weight
+      let stepCost = getDynamicWeight(neighbor.node, neighbor.distance);
+      
+      // Inject Alternate Route Penalties
+      if (penalties[current] === neighbor.node || penalties[neighbor.node] === current) {
+         stepCost += 50; // Mass penalty to enforce alternate routing
+      }
       
       const alternativeDistance = distances[current] + stepCost;
 
@@ -139,71 +148,36 @@ export function findBestRoute(startZone, zones = []) {
     }
   }
 
-  // Find shortest path to any terminal node (empty array in graph config like "south" or "gates")
-  let bestTerminal = null;
-  let minTerminalDist = Infinity;
-  for (const [node, edges] of Object.entries(graph)) {
-    if (edges.length === 0 && distances[node] < minTerminalDist) {
-      minTerminalDist = distances[node];
-      bestTerminal = node;
-    }
-  }
-
-  // Fallback: If no terminal node is reachable, return nearest available exit (itself)
-  if (!bestTerminal || minTerminalDist === Infinity) {
+  if (distances[destinationZone] === Infinity) {
     return { path: [startZone], totalCost: 0 };
   }
 
   // Reconstruct path
   const path = [];
-  let currentWalk = bestTerminal;
+  let currentWalk = destinationZone;
   while (currentWalk !== null) {
     path.unshift(currentWalk);
     currentWalk = previous[currentWalk];
   }
 
-  const result = { path, totalCost: minTerminalDist };
-  routeCache[cacheKey] = result;
-  
-  return result;
+  return { path, totalCost: distances[destinationZone] };
 }
 
-/**
- * STEP 7 — UPDATE SMART MESSAGE & STEP 8 — SMART SUGGESTIONS ENGINE
- * 
- * @param {Array} path 
- * @param {Array} zones 
- */
-export function generateSmartSuggestion(path, zones = []) {
-  if (path.length === 0) return "Analyzing optimal routes...";
-
-  const terminalNode = path[path.length - 1];
+// STEP 4 — ADD ALTERNATE ROUTE ENGINE
+export function findAlternatePath(startZone, destinationZone, bestPath, zones = []) {
+  if (!bestPath || bestPath.length < 2) return null;
   
-  if (zones.find(z => z.blocked)) {
-    return "Emergency detected. Proceed to nearest safe exit.";
+  const penalties = {};
+  for (let i = 0; i < bestPath.length - 1; i++) {
+    penalties[bestPath[i]] = bestPath[i+1];
   }
 
-  // Check if route avoids crowded zones based on tier scale
-  let isAvoiding = false;
-  path.forEach(node => {
-     let d = zoneDensityMap[node] || 0;
-     if (d >= 50) isAvoiding = true; // High density path components trigger congestion alerts
-  });
+  const altResult = findBestRoute(startZone, destinationZone, zones, penalties);
+  
+  // Validate alternate is somewhat comparable or physically distinct
+  if (!altResult.path || altResult.path.length <= 1) return null;
+  if (altResult.path.join('_') === bestPath.join('_')) return null;
 
-  // Find the stand/concourse name for the current recommended node
-  const activeNode = path.length > 1 ? path[1] : path[0];
-  let friendlyName = activeNode;
-  if (activeNode === 'concN') friendlyName = 'North Concourse';
-  else if (activeNode === 'concS') friendlyName = 'South Concourse';
-  else if (activeNode === 'north') friendlyName = 'North Stand';
-  else if (activeNode === 'south') friendlyName = 'South Stand';
-  else if (activeNode === 'east') friendlyName = 'East Stand';
-  else if (activeNode === 'west') friendlyName = 'West Stand';
-  else if (activeNode === 'gates') friendlyName = 'Main Gates';
-  
-  if (isAvoiding) {
-     return `Using ${friendlyName} — less crowded.`;
-  }
-  
-  return `Path looks clear.`;
+  return altResult;
 }
+
