@@ -288,19 +288,64 @@
       updateSmartMessage(path);
     }
 
-    function updateSmartMessage(path) {
+    function analyzeRoute(path) {
       let crowdedZones = [];
+      let mediumZones = [];
+
       path.forEach(zone => {
         const density = zoneDensityMap[zone] || 0;
         if (density > 80) {
-          crowdedZones.push(zone);
+          crowdedZones.push({ zone, density });
+        } else if (density >= 50) {
+          mediumZones.push({ zone, density });
         }
       });
-      if (crowdedZones.length > 0) {
-        document.getElementById("nav-suggestion-text").innerText = "Avoiding crowded zones: " + crowdedZones.join(", ");
-      } else {
-        document.getElementById("nav-suggestion-text").innerText = "Path looks clear.";
+
+      return { crowdedZones, mediumZones };
+    }
+
+    function estimateTimeSaving(path) {
+      let delay = 0;
+      path.forEach(zone => {
+        const density = zoneDensityMap[zone] || 0;
+        if (density > 80) delay += 2;
+      });
+      return delay;
+    }
+
+    function generateSmartSuggestion(path) {
+      const result = analyzeRoute(path);
+
+      if (result.crowdedZones.length > 0) {
+        const zone = result.crowdedZones[0];
+        return "🔴 High congestion at " + zone.zone + " (" + Math.round(zone.density) + "%). Rerouting applied.";
       }
+
+      if (result.mediumZones.length > 0) {
+        const zone = result.mediumZones[0];
+        return "🟡 Moderate crowd near " + zone.zone + ". Expect minor delays.";
+      }
+
+      return "🟢 Optimal path selected — conditions clear.";
+    }
+
+    function updateSmartMessage(path) {
+      const message = generateSmartSuggestion(path);
+      const savedTime = estimateTimeSaving(path);
+      
+      let finalMessage = message;
+      if (savedTime > 0) {
+         finalMessage += " Estimated delay avoided: " + savedTime + " min.";
+      }
+      
+      const suggEl = document.getElementById("nav-suggestion");
+      document.getElementById("nav-suggestion-text").innerText = finalMessage;
+      
+      // Update visual container
+      suggEl.className = 'suggestion'; // Reset
+      if (finalMessage.includes('🔴')) suggEl.classList.add('status-critical');
+      else if (finalMessage.includes('🟡')) suggEl.classList.add('status-warning');
+      else suggEl.classList.add('status-clear');
     }
 
 
