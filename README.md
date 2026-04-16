@@ -7,7 +7,7 @@
 [![Firebase](https://img.shields.io/badge/Firebase-v10.8.0-yellow)](https://firebase.google.com)
 
 ✔ **38 automated test cases** covering simulation, real-time sync, edge cases, and system reliability
-✔ **Competition rules met:** Repo size < 1MB, Single Branch, Public Repo, Google Services Integrated
+✔ **Competition rules met:** Repo size < 10MB, Single Branch, Public Repo, Google Services Integrated
 
 ---
 
