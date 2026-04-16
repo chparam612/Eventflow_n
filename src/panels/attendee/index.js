@@ -510,8 +510,8 @@ function renderDuring() {
 
     <!-- Mini map container -->
     <div style="background:var(--bg-card);border:1px solid var(--border);
-      border-radius:16px;overflow:hidden;">
-      <div id="during-map" style="height:200px;"></div>
+      border-radius:16px;overflow:hidden;position:relative;">
+      <div id="during-map" style="width:100%;height:200px;"></div>
     </div>
 
     <!-- Exit button -->
@@ -773,8 +773,8 @@ function attachScreenListeners(name) {
   if (name === 'escort-exit') attachEscortListeners(4, 'feedback');
 
   if (name === 'during') {
-    // Init mini map
-    initDuringMap();
+    // Init mini map with a layout delay so bounds calculate properly
+    setTimeout(() => { if (document.getElementById('during-map')) initDuringMap(); }, 150);
     // Listen for nudges
     const unNudge = listenNudges((nudges) => {
       if (nudges.length > 0) {
