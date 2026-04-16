@@ -90,19 +90,22 @@ export function getZoneDensity() {
 export function getLastDensity() { return { ..._lastDensity }; }
 
 // ─── Status Helpers ────────────────────────────────────────────────────────
-export function getZoneStatus(density) {
+export function getZoneStatus(density, isBlocked = false) {
+  if (isBlocked) return 'blocked';
   if (density >= 0.8) return 'critical';
   if (density >= 0.6) return 'busy';
   return 'clear';
 }
 
 export function getStatusColor(status) {
+  if (status === 'blocked')  return '#060A10'; // Black
   if (status === 'critical') return '#FF4757';
   if (status === 'busy')     return '#FFD166';
   return '#00C49A';
 }
 
 export function getStatusEmoji(status) {
+  if (status === 'blocked')  return '🚧';
   if (status === 'critical') return '🔴';
   if (status === 'busy')     return '🟡';
   return '🟢';

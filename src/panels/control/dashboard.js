@@ -5,7 +5,7 @@
 import { getCurrentUser, isControlUser, logout } from '/src/auth.js';
 import {
   writeZone, pushInstruction, pushNudge,
-  listenZones, listenAllStaff
+  listenZones, listenAllStaff, listenEmergency, setEmergencyStatus
 } from '/src/firebase.js';
 import {
   simulateTick, setTick, getTick, getTickLabel,
@@ -13,17 +13,20 @@ import {
 } from '/src/simulation.js';
 import { getAIInsights } from '/src/gemini.js';
 import { predictFutureDensity, detectSurgeRisk } from '/src/predictiveEngine.js';
+import { rankBestExit } from '/src/evacuationEngine.js';
+import { calculateDensityColor } from '/src/heatmapEngine.js';
+import { calculateTotalVisitors, calculateAverageDensity, findPeakZone, calculateGateUtilization, estimateAverageWaitTime } from '/src/analyticsEngine.js';
 
 // NMS approximate bounding coords for each zone overlay
 const ZONE_BOUNDS = {
-  north:   { n: 23.0943, s: 23.0928, e: 72.5967, w: 72.5938 },
-  south:   { n: 23.0910, s: 23.0896, e: 72.5967, w: 72.5938 },
-  east:    { n: 23.0928, s: 23.0910, e: 72.5978, w: 72.5963 },
-  west:    { n: 23.0928, s: 23.0910, e: 72.5942, w: 72.5927 },
-  concN:   { n: 23.0930, s: 23.0923, e: 72.5960, w: 72.5945 },
-  concS:   { n: 23.0916, s: 23.0908, e: 72.5960, w: 72.5945 },
-  gates:   { n: 23.0936, s: 23.0930, e: 72.5955, w: 72.5949 },
-  parking: { n: 23.0950, s: 23.0942, e: 72.5980, w: 72.5920 }
+  north:   { n: 23.0945, s: 23.0930, e: 72.6000, w: 72.5970 },
+  south:   { n: 23.0910, s: 23.0895, e: 72.6000, w: 72.5970 },
+  east:    { n: 23.0932, s: 23.0910, e: 72.6015, w: 72.5995 },
+  west:    { n: 23.0932, s: 23.0910, e: 72.5975, w: 72.5955 },
+  concN:   { n: 23.0938, s: 23.0930, e: 72.5995, w: 72.5975 },
+  concS:   { n: 23.0918, s: 23.0910, e: 72.5995, w: 72.5975 },
+  gates:   { n: 23.0945, s: 23.0940, e: 72.5990, w: 72.5980 },
+  parking: { n: 23.0965, s: 23.0950, e: 72.6025, w: 72.5955 }
 };
 
 let mapInstance = null;
@@ -146,6 +149,42 @@ export function render() {
         background:var(--bg-card);border-left:1px solid var(--border);
         overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;">
 
+        <!-- Heatmap Toggle (New) -->
+        <div style="background:var(--bg-deep);border:1px solid var(--border);
+          border-radius:12px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:0.72rem;font-weight:700;color:var(--text-secondary);">🔥 HEATMAP MODE</span>
+          <label class="switch">
+            <input type="checkbox" id="heatmap-toggle" checked>
+            <span class="slider round"></span>
+          </label>
+        </div>
+
+        <!-- Emergency Action -->
+        <div style="border:1px solid rgba(255,71,87,0.3);background:rgba(255,71,87,0.05);
+          border-radius:12px;padding:12px;text-align:center;">
+          <button id="ctrl-emergency-btn" aria-label="Activate emergency evacuation mode" style="
+            width:100%;padding:12px;background:var(--red);color:#fff;
+            border:none;border-radius:8px;font-weight:700;
+            display:flex;align-items:center;justify-content:center;gap:8px;
+            cursor:pointer;transition:all 0.2s;">
+            🚨 EMERGENCY MODE
+          </button>
+          <div id="emerg-status-badge" style="display:none;margin-top:8px;font-size:0.75rem;font-weight:700;color:var(--red);">
+            ACTIVE: <span id="emerg-type-val">FIRE</span> @ <span id="emerg-zone-val">NORTH</span>
+          </div>
+        </div>
+
+        <!-- Evacuation Estimates (New) -->
+        <div style="background:var(--bg-card2);border:1px solid var(--border);
+          border-radius:12px;padding:12px;">
+          <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
+            color:var(--text-muted);text-transform:uppercase;margin-bottom:10px;">
+            🚪 Evacuation Estimates</div>
+          <div id="evacuation-list" style="display:flex;flex-direction:column;gap:8px;">
+            <div style="color:var(--text-muted);font-size:0.75rem;">Initializing estimates…</div>
+          </div>
+        </div>
+
         <!-- Live Alerts -->
         <div>
           <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
@@ -158,18 +197,74 @@ export function render() {
 
         <div style="height:1px;background:var(--border);"></div>
 
-        <!-- Predictive Alerts -->
+        <!-- Analytics Dashboard (New) -->
         <div>
           <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
-            color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
-            🔮 Predictive Alerts</div>
-          <div id="predictive-alerts" aria-label="Predicted congestion alerts" 
-               style="display:flex;flex-direction:column;gap:6px;">
-            <div style="color:var(--text-muted);font-size:0.8rem;">No surges predicted</div>
+            color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;"
+            aria-label="Analytics Dashboard">
+            📊 Analytics Dashboard</div>
+          <div style="display:grid;grid-template-columns:1fr;gap:8px;">
+            <!-- CARD 1: Total Visitors -->
+            <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;" aria-label="Total visitors inside stadium">
+               <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">👥 Total Visitors Inside</div>
+               <div id="analytics-total" style="font-size:1.1rem;font-weight:700;color:var(--text-primary);">--</div>
+            </div>
+            <!-- CARD 2: Average Stadium Density -->
+            <div id="analytics-avg-card" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;" aria-label="Average stadium density">
+               <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">📈 Average Stadium Density</div>
+               <div id="analytics-avg" style="font-size:1.1rem;font-weight:700;color:var(--text-primary);">--%</div>
+            </div>
+            <!-- CARD 3: Peak Congestion Zone -->
+             <div id="analytics-peak-card" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;" aria-label="Peak congestion zone">
+               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                 <div style="font-size:0.75rem;color:var(--text-secondary);">🔥 Peak Zone</div>
+                 <div id="analytics-emerg-alert" style="font-size:0.65rem;font-weight:700;color:#FF4757;display:none;">🚨 EMERGENCY</div>
+               </div>
+               <div id="analytics-peak" style="font-size:0.95rem;font-weight:700;color:var(--text-primary);">--</div>
+            </div>
+            <!-- CARD 4: Gate Utilization -->
+             <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;" aria-label="Gate Utilization">
+               <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">🚪 Gate Utilization</div>
+               <div id="analytics-gates" style="font-size:0.8rem;color:var(--text-primary);display:flex;flex-direction:column;gap:4px;">--</div>
+            </div>
+            <!-- CARD 5: Avg Wait Time -->
+             <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;padding:10px;" aria-label="Average wait time">
+               <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:2px;">⏱️ Estimated Average Wait</div>
+               <div id="analytics-wait" style="font-size:1.1rem;font-weight:700;color:var(--text-primary);">-- min</div>
+            </div>
           </div>
         </div>
 
         <div style="height:1px;background:var(--border);"></div>
+
+        <div style="height:1px;background:var(--border);"></div>
+
+        <!-- Heatmap Legend (New) -->
+        <div>
+          <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
+            color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
+            📊 Visualization Legend</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.65rem;color:var(--text-secondary);">
+              <div style="width:10px;height:10px;background:#3498DB;border-radius:2px;"></div> Low (0-30%)
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.65rem;color:var(--text-secondary);">
+              <div style="width:10px;height:10px;background:#F1C40F;border-radius:2px;"></div> Med (31-60%)
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.65rem;color:var(--text-secondary);">
+              <div style="width:10px;height:10px;background:#E74C3C;border-radius:2px;"></div> High (61-85%)
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.65rem;color:var(--text-secondary);">
+              <div style="width:10px;height:10px;background:#C0392B;border-radius:2px;"></div> Crit (85%+)
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.65rem;color:var(--text-secondary);">
+              <div style="width:10px;height:10px;background:#A29BFE;border-radius:2px;"></div> Prediction
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.65rem;color:var(--text-secondary);">
+              <div style="width:10px;height:10px;background:#000000;border-radius:2px;"></div> Emergency
+            </div>
+          </div>
+        </div>
 
         <!-- Instruction Dispatch -->
         <div>
@@ -270,13 +365,54 @@ export function render() {
       background:#00C49A;cursor:pointer;border:2px solid #060A10;
     }
     .quick-instr-btn:hover { border-color:rgba(255,107,53,0.4)!important;background:rgba(255,107,53,0.06)!important; }
-  </style>`;
+    
+    /* Emergency Modal Overlay */
+    #emerg-modal-overlay {
+      position:fixed;top:0;left:0;right:0;bottom:0;
+      background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);
+      display:none;align-items:center;justify-content:center;z-index:1000;
+    }
+    .emerg-pulsing { animation: emerg-pulse 1s infinite alternate; }
+    @keyframes emerg-pulse { from { opacity: 0.6; } to { opacity: 1; } }
+  </style>
+  
+  <div id="emerg-modal-overlay">
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:24px;width:320px;box-shadow:0 20px 40px rgba(0,0,0,0.4);">
+      <h3 style="margin-top:0;color:var(--red);display:flex;align-items:center;gap:10px;">🚨 Activate Emergency</h3>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px;">This will block the selected zone and immediately alert all staff and attendees.</p>
+      
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Type</label>
+        <select id="emerg-type-sel" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
+          <option value="FIRE">🔥 FIRE</option>
+          <option value="SECURITY">👮 SECURITY THREAT</option>
+          <option value="MEDICAL">🚑 MASS MEDICAL INCIDENT</option>
+        </select>
+      </div>
+      
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Blocked Zone</label>
+        <select id="emerg-zone-sel" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
+          ${Object.entries(ZONES).map(([id, z]) => `<option value="${id}">${z.name}</option>`).join('')}
+        </select>
+      </div>
+      
+      <div style="display:flex;gap:10px;">
+        <button id="emerg-cancel" style="flex:1;padding:12px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-secondary);cursor:pointer;">Cancel</button>
+        <button id="emerg-confirm" style="flex:1;padding:12px;background:var(--red);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">ACTIVATE</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 export async function init(navigate) {
   // ── Auth guard ──
   const user = await getCurrentUser();
   if (!user || !isControlUser(user)) { navigate('/control-login'); return; }
+
+  let currentEmergency = { active: false };
+  let densities = {}; // TASK 1: Declare shared densities object
+  let heatmapEnabled = true; // Default ON
 
   // ── DOM refs ──
   const scrubber   = document.getElementById('ctrl-scrubber');
@@ -441,14 +577,14 @@ export async function init(navigate) {
 
     // Gate labels A–H around stadium
     const gatePositions = [
-      { label: 'A', lat: 23.0944, lng: 72.5940 },
-      { label: 'B', lat: 23.0944, lng: 72.5952 },
-      { label: 'C', lat: 23.0932, lng: 72.5978 },
-      { label: 'D', lat: 23.0921, lng: 72.5980 },
-      { label: 'E', lat: 23.0905, lng: 72.5978 },
-      { label: 'F', lat: 23.0921, lng: 72.5925 },
-      { label: 'G', lat: 23.0898, lng: 72.5952 },
-      { label: 'H', lat: 23.0898, lng: 72.5940 }
+      { label: 'A', lat: 23.0952, lng: 72.5975 },
+      { label: 'B', lat: 23.0952, lng: 72.5988 },
+      { label: 'C', lat: 23.0938, lng: 72.6008 },
+      { label: 'D', lat: 23.0921, lng: 72.6015 },
+      { label: 'E', lat: 23.0902, lng: 72.6008 },
+      { label: 'F', lat: 23.0921, lng: 72.5955 },
+      { label: 'G', lat: 23.0890, lng: 72.5988 },
+      { label: 'H', lat: 23.0890, lng: 72.5975 }
     ];
 
     gatePositions.forEach(g => {
@@ -494,18 +630,36 @@ export async function init(navigate) {
     }).join('');
   }
 
-  function updateMapOverlays(densities, predictions = {}) {
-    lastDensities = densities;
+  function updateMapOverlays(densitiesData, predictions = {}) {
+    if (!densitiesData) densitiesData = {}; // Safety fallback
+    lastDensities = densitiesData;
+    
     Object.entries(zoneRectangles).forEach(([id, rect]) => {
-      const d = densities[id] || 0;
+      const d = densitiesData[id] || 0;
       const pred = predictions[id]?.risk && predictions[id]?.percent >= 90;
+      const isBlocked = currentEmergency.active && currentEmergency.zone === id;
       
       let color, opacity;
-      if (pred) { color = '#A29BFE'; opacity = 0.55; } // Purple for Predicted Surge
+      if (isBlocked) { 
+        // TASK 4: Blocked zones MUST be BLACK
+        color = '#000000'; 
+        opacity = 0.9; 
+      } 
+      else if (pred) { color = '#A29BFE'; opacity = 0.55; }
+      else if (heatmapEnabled) {
+        color = calculateDensityColor(d * 100);
+        opacity = 0.4;
+      }
       else if (d >= 0.8) { color = '#FF4757'; opacity = 0.45; }
       else if (d >= 0.6) { color = '#FFD166'; opacity = 0.35; }
       else { color = '#00C49A'; opacity = 0.25; }
-      rect.setOptions({ fillColor: color, fillOpacity: opacity, strokeColor: color });
+      
+      rect.setOptions({ 
+        fillColor: color, 
+        fillOpacity: opacity, 
+        strokeColor: color,
+        strokeWeight: isBlocked ? 4 : 1.5
+      });
     });
   }
 
@@ -518,6 +672,73 @@ export async function init(navigate) {
     }, 0));
     if (totalEl) totalEl.textContent = totalInside.toLocaleString('en-IN');
     if (metricAvg) metricAvg.textContent = Math.round(avg * 100) + '%';
+  }
+
+  function updateAnalyticsDashboard(densities) {
+    if(!document.getElementById('analytics-total')) return; // Check if rendered
+
+    const enrichedZones = Object.entries(densities).map(([id, d]) => {
+      const zDef = ZONES[id] || {};
+      return {
+        id,
+        capacity: zDef.cap || 10000,
+        currentFans: Math.round(d * (zDef.cap || 10000)),
+        exitRate: zDef.exitRate || 20
+      };
+    });
+
+    const totalFans = calculateTotalVisitors(enrichedZones);
+    const avgDens = calculateAverageDensity(enrichedZones);
+    const peak = findPeakZone(enrichedZones);
+    const gates = calculateGateUtilization(enrichedZones);
+    const avgWait = estimateAverageWaitTime(enrichedZones);
+
+    // Card 1
+    document.getElementById('analytics-total').textContent = totalFans.toLocaleString('en-IN');
+    
+    // Card 2
+    const avgCard = document.getElementById('analytics-avg-card');
+    document.getElementById('analytics-avg').textContent = avgDens + '%';
+    avgCard.style.border = avgDens > 85 ? '1px solid #FF4757' : (avgDens > 60 ? '1px solid #FFD166' : '1px solid #00C49A');
+    document.getElementById('analytics-avg').style.color = avgDens > 85 ? '#FF4757' : (avgDens > 60 ? '#FFD166' : '#00C49A');
+
+    // Card 3
+    const peakCard = document.getElementById('analytics-peak-card');
+    const emergAlert = document.getElementById('analytics-emerg-alert');
+    const peakName = ZONES[peak.zoneId]?.name?.replace(' Stand','') || peak.zoneId || '--';
+    document.getElementById('analytics-peak').textContent = peak.zoneId ? `${peakName} (${peak.densityPercent}%)` : '--';
+    
+    if (currentEmergency.active) {
+      if (currentEmergency.zone === peak.zoneId || avgDens > 85) {
+         peakCard.style.border = '1px solid #FF4757';
+         emergAlert.style.display = 'block';
+         document.getElementById('analytics-peak').style.color = '#FF4757';
+      } else {
+         peakCard.style.border = '1px solid #FF4757';
+         emergAlert.style.display = 'block';
+         document.getElementById('analytics-peak').textContent = `${ZONES[currentEmergency.zone]?.name} (BLOCKED)`;
+         document.getElementById('analytics-peak').style.color = '#FF4757';
+      }
+    } else {
+      peakCard.style.border = peak.densityPercent > 85 ? '1px solid #FF4757' : '1px solid var(--border)';
+      emergAlert.style.display = 'none';
+      document.getElementById('analytics-peak').style.color = peak.densityPercent > 85 ? '#FF4757' : 'var(--text-primary)';
+    }
+
+    // Card 4
+    const gatesEl = document.getElementById('analytics-gates');
+    const mainGates = gates.filter(g => ['north','south','east','west'].includes(g.zoneId));
+    gatesEl.innerHTML = mainGates.map(g => {
+       const color = g.utilizationPercent > 85 ? '#FF4757' : (g.utilizationPercent > 60 ? '#FFD166' : '#00C49A');
+       const n = ZONES[g.zoneId]?.name?.replace(' Stand','') || g.zoneId;
+       return `<div style="display:flex;justify-content:space-between;">
+           <span>${n}</span>
+           <span style="color:${color};">${g.utilizationPercent}%</span>
+         </div>`;
+    }).join('');
+
+    // Card 5
+    document.getElementById('analytics-wait').textContent = `${avgWait} min`;
   }
 
   async function autoAlertCheck(densities) {
@@ -558,6 +779,8 @@ export async function init(navigate) {
       
       console.log('Auto-alert sent for:', name, pct + '%');
     }
+  }
+
   function calculatePredictions(densities) {
     const predictions = {};
     Object.keys(densities).forEach(id => {
@@ -639,8 +862,12 @@ export async function init(navigate) {
 
   // ── Firebase: listen zones ──
   const unListenZones = listenZones((zones) => {
-    const densities = {};
-    Object.entries(zones).forEach(([id, z]) => { densities[id] = z.density || 0; });
+    // TASK 1: Populate densities with fallback
+    if (!zones) zones = {};
+    Object.entries(zones).forEach(([id, z]) => { 
+      densities[id] = z.density || 0; 
+    });
+    
     if (Object.keys(densities).length > 0) {
       const predictions = calculatePredictions(densities);
       updateMapOverlays(densities, predictions);
@@ -651,9 +878,119 @@ export async function init(navigate) {
   });
   cleanupFirebase.push(unListenZones);
 
-  // ── Firebase: listen staff ──
+  // ── Emergency Actions ──
+  const emergBtn = document.getElementById('ctrl-emergency-btn');
+  const modal = document.getElementById('emerg-modal-overlay');
+  
+  emergBtn?.addEventListener('click', () => {
+    if (currentEmergency.active) {
+      if (confirm('Clear active emergency and restore normal operations?')) {
+        setEmergencyStatus(false);
+      }
+    } else {
+      modal.style.display = 'flex';
+    }
+  });
+
+  document.getElementById('emerg-cancel')?.addEventListener('click', () => modal.style.display = 'none');
+  
+  document.getElementById('emerg-confirm')?.addEventListener('click', async () => {
+    try { // TASK 8: Prevent UI Crash
+      const type = document.getElementById('emerg-type-sel').value;
+      const zone = document.getElementById('emerg-zone-sel').value;
+      const name = ZONES[zone]?.name || zone;
+      
+      modal.style.display = 'none';
+      await setEmergencyStatus(true, type, zone);
+      
+      // TASK 6: Logging
+      console.log("Emergency Activated:", type);
+      console.log("Zone Blocked:", zone);
+      
+      // Auto-broadcast 
+      const routes = calculateEvacuationRoutes(ZONES, densities, zone);
+      const target = routes.safeRoutes[0] || 'south';
+      const msg = getEmergencyMessage(type, name, ZONES[target]?.name || target);
+      
+      await pushInstruction(zone, msg, 'CONTROL');
+      await pushNudge(zone, msg);
+    } catch (error) {
+      console.error("Emergency activation error:", error);
+    }
+  });
+
+  const unListenEmerg = listenEmergency((state) => {
+    currentEmergency = state;
+    const badge = document.getElementById('emerg-status-badge');
+    if (emergBtn) {
+      emergBtn.textContent = state.active ? '🚨 CLEAR EMERGENCY' : '🚨 EMERGENCY MODE';
+      emergBtn.style.background = state.active ? 'var(--text-primary)' : 'var(--red)';
+    }
+    if (badge) {
+      badge.style.display = state.active ? 'block' : 'none';
+      if (state.active) {
+        document.getElementById('emerg-type-val').textContent = state.type;
+        document.getElementById('emerg-zone-val').textContent = (ZONES[state.zone]?.name || state.zone).toUpperCase();
+      }
+    }
+    updateMapOverlays(lastDensities);
+  });
+  cleanupFirebase.push(unListenEmerg);
+
+  // ── Evacuation Estimates Polling (TASK) ──
+  function updateEvacuationUI() {
+    const { recommendedGate, rankedList } = rankBestExit(ZONES, densities, currentEmergency.active ? currentEmergency.zone : null);
+    const listEl = document.getElementById('evacuation-list');
+    if (!listEl) return;
+
+    listEl.innerHTML = rankedList.map(item => {
+      const name = ZONES[item.id]?.name || item.id;
+      const gate = ZONES[item.id]?.gate || '-';
+      const isBlocked = item.status === "BLOCKED";
+      const isBest = item.id === recommendedGate;
+      
+      const color = isBlocked ? '#000000' : (isBest ? '#00C49A' : 'var(--text-secondary)');
+      const label = isBlocked ? '🚫 BLOCKED' : `${item.time} min`;
+      const check = isBest ? ' ✅' : '';
+      
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;
+          padding:6px 8px;background:rgba(255,255,255,0.02);border-radius:6px;
+          border-left:3px solid ${color};">
+          <div style="font-size:0.75rem;color:var(--text-primary);font-weight:600;">
+            Gate ${gate} (${name.replace(' Stand','')})
+          </div>
+          <div style="font-size:0.75rem;color:${color};font-weight:700;">
+            ${label}${check}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  const evacInterval = setInterval(updateEvacuationUI, 5000);
+  cleanupFirebase.push(() => clearInterval(evacInterval));
+
   const unListenStaff = listenAllStaff(renderStaffList);
   cleanupFirebase.push(unListenStaff);
+
+  // ── Heatmap Toggle Switch ──
+  const toggle = document.getElementById('heatmap-toggle');
+  if (toggle) {
+    toggle.addEventListener('change', (e) => {
+      heatmapEnabled = e.target.checked;
+      const predictions = calculatePredictions(densities);
+      updateMapOverlays(densities, predictions);
+    });
+  }
+
+  // ── 3-Second UI Pulse (TASK) ──
+  const pulseInt = setInterval(() => {
+    const predictions = calculatePredictions(densities);
+    updateMapOverlays(densities, predictions);
+    updateAnalyticsDashboard(densities);
+  }, 3000);
+  cleanupFirebase.push(() => clearInterval(pulseInt));
 
   // ── Quick instruction buttons ──
   document.querySelectorAll('.quick-instr-btn').forEach(btn => {

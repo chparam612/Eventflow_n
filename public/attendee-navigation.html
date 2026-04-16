@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Attendee Navigation - EventFlow V2">
+  <meta name="theme-color" content="#060A10">
+  <title>Smart Navigation — EventFlow</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-deep: #060A10; --bg-card: #0D1421; --border: rgba(255,255,255,0.07);
+      --green: #00C49A; --red: #FF4757; --yellow: #FFD166;
+      --text-primary: #F0F4F8; --text-secondary: #8899A6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg-deep); color: var(--text-primary); }
+    
+    #map { width: 100%; height: 60vh; background: #1a2233; }
+    
+    .panel {
+      padding: 20px;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      height: 40vh;
+      overflow-y: auto;
+    }
+    .panel h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1.2rem; margin-bottom: 12px; display: flex; justify-content: space-between; }
+    .route-steps { font-size: 1rem; color: var(--text-primary); margin-bottom: 20px; font-weight: 500; }
+    
+    .suggestion {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+    
+    .status-warning { border-color: rgba(255, 209, 102, 0.4); background: rgba(255, 209, 102, 0.1); color: var(--yellow); }
+    .status-critical { border-color: rgba(255, 71, 87, 0.4); background: rgba(255, 71, 87, 0.1); color: var(--red); }
+    .status-clear { border-color: rgba(0, 196, 154, 0.4); background: rgba(0, 196, 154, 0.1); color: var(--green); }
+    
+    .back-btn {
+      position: absolute; top: 20px; left: 20px; z-index: 10;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; width: 40px; height: 40px;
+      color: var(--text-primary); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+    }
+  </style>
+
+  <script>
+    window.efMap = null;
+    window.efRoutePolyline = null;
+    window.initMap = () => {
+      window.efMap = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 23.0915, lng: 72.5976 },
+        zoom: 18,
+        mapId: 'e4b9db3073df26e8',
+        disableDefaultUI: true,
+        backgroundColor: '#060A10'
+      });
+      window.efRoutePolyline = new google.maps.Polyline({
+        path: [],
+        geodesic: true,
+        strokeColor: '#4A90E2',
+        strokeOpacity: 0.8,
+        strokeWeight: 6,
+        strokeWeight: 6,
+        map: window.efMap
+      });
+      console.log("Map initialized");
+      window.dispatchEvent(new CustomEvent('mapsReady'));
+    };
+  </script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAB-rkKZiGCOsnWR0gXhMyCOvau0iMYovs&callback=initMap&libraries=maps,marker&v=weekly" defer></script>
+</head>
+<body>
+
+  <button class="back-btn" onclick="window.history.back()" aria-label="Go back">←</button>
+  <div id="map" aria-label="Attendee navigation dashboard"></div>
+  
+  <div class="panel">
+    <h2>🧭 Your Route <span id="nav-eta" style="color:var(--green); font-size: 1rem;">-- min</span></h2>
+    <div class="route-steps" id="nav-path">Calculating best route...</div>
+    
+    <div id="nav-suggestion" class="suggestion">
+      <div style="font-family:'Space Grotesk',sans-serif; text-transform:uppercase; font-size:0.75rem; letter-spacing:0.05em; margin-bottom:4px;">Smart Suggestion</div>
+      <div id="nav-suggestion-text">Analyzing conditions...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { listenZones, listenEmergency } from '/src/firebase.js';
+    import { findBestRoute, generateSmartSuggestion } from '/src/pathfindingEngine.js';
+    import { ZONES } from '/src/simulation.js';
+    import { zoneCoordinates, getZonePosition } from '/src/zoneCoordinates.js';
+    import { zoneGraph } from '/src/zoneGraph.js';
+    import { loginAnonymously } from '/src/auth.js';
+    import { updateDensityMap, zoneDensityMap } from '/src/pathfindingEngine.js';
+
+    function drawZoneMarkers(map) {
+      if (!zoneCoordinates) return;
+      Object.keys(zoneCoordinates).forEach(zoneId => {
+        let coord = zoneCoordinates[zoneId];
+        if (!coord) coord = { lat: 23.0918, lng: 72.5972 }; // Fallback safety
+        console.log("Marker:", zoneId);
+        new google.maps.Marker({
+          position: coord,
+          map: map,
+          title: zoneId.toUpperCase()
+        });
+      });
+      console.log("Markers drawn");
+    }
+
+    let routeLines = [];
+
+    function drawZoneRoutes(map) {
+      Object.keys(zoneGraph).forEach(zoneId => {
+        const connections = zoneGraph[zoneId];
+        connections.forEach(connection => {
+          let start = zoneCoordinates[zoneId];
+          let end = zoneCoordinates[connection.node];
+
+          if (!start || !end) return;
+
+          const polyline = new google.maps.Polyline({
+            path: [start, end],
+            geodesic: true,
+            strokeColor: "#00C49A",
+            strokeOpacity: 0.8,
+            strokeWeight: 3,
+            map: map
+          });
+          routeLines.push(polyline);
+        });
+      });
+      console.log("Routes drawn");
+    }
+
+    // Map initialization listener
+    window.addEventListener('mapsReady', () => {
+      if (!window.efMap) return;
+      drawZoneMarkers(window.efMap);
+      drawZoneRoutes(window.efMap);
+    });
+
+    // Fallback Calculation Loop
+    setTimeout(() => {
+      if (window.efMap && routeLines.length === 0) {
+        drawZoneMarkers(window.efMap);
+        drawZoneRoutes(window.efMap);
+      }
+    }, 1000);
+
+    function clearRoutes() {
+      routeLines.forEach(line => {
+        line.setMap(null);
+      });
+      routeLines = [];
+    }
+
+    function refreshRoutes() {
+      clearRoutes();
+      drawZoneRoutes(window.efMap);
+    }
+
+    let goldLines = [];
+
+    function clearGoldRoutes() {
+      goldLines.forEach(line => {
+        line.setMap(null);
+      });
+      goldLines = [];
+    }
+
+    function drawBestRoute(path) {
+      if (!path || path.length < 2) {
+        console.error("Invalid path:", path);
+        return;
+      }
+      
+      clearGoldRoutes(); // Remove old gold routes before drawing
+
+      for (let i = 0; i < path.length - 1; i++) {
+        const start = zoneCoordinates[path[i]];
+        const endNode = path[i + 1];
+        const end = zoneCoordinates[endNode];
+
+        if (!start || !end) continue;
+
+        const density = zoneDensityMap[endNode] || 0;
+        let color = "#00C49A";
+
+        if (density >= 50 && density <= 80) {
+          color = "#FFD700";
+        }
+        if (density > 80) {
+          color = "#FF4D4D";
+        }
+
+        const goldLine = new google.maps.Polyline({
+          path: [start, end],
+          strokeColor: color,
+          strokeOpacity: 1,
+          strokeWeight: 6,
+          geodesic: true,
+          zIndex: 10, // Ensure it appears ABOVE green lines
+          map: window.efMap
+        });
+        
+        goldLines.push(goldLine);
+      }
+    }
+
+    function calculateRouteTime(path) {
+      if (!path || path.length < 2) {
+        return 0;
+      }
+      const steps = path.length - 1;
+      const timePerStep = 2; // Fixed time step scaling
+      return steps * timePerStep;
+    }
+
+    let currentDensities = {};
+    let isEmergency = false;
+    let emergencyZone = null;
+    let startZone = localStorage.getItem('ef_start_zone') || 'north';
+
+    function updateNavigation() {
+      console.log("updateNavigation START", startZone);
+      const startTime = performance.now();
+      
+      // Map densities to pathfinding engine schema
+      const enrichedZones = Object.entries(currentDensities).map(([id, d]) => {
+        const zDef = ZONES[id] || {};
+        return {
+          id,
+          capacity: zDef.cap || 10000,
+          currentFans: Math.round(d * (zDef.cap || 10000)),
+          blocked: (isEmergency && emergencyZone === id)
+        };
+      });
+
+      console.log("Enriched zones calculation complete");
+
+      // 1. Calculate Path
+      let pathResult;
+      try {
+        pathResult = findBestRoute(startZone, enrichedZones);
+        console.log("findBestRoute success:", pathResult);
+      } catch (e) {
+        console.error("findBestRoute CRASHED:", e);
+        return;
+      }
+      const { path } = pathResult;
+      
+      const calcTime = performance.now() - startTime;
+      if (calcTime > 50) console.warn(`Pathfinding took > 50ms: ${calcTime}ms`);
+
+      // 2. Map Update (Polyline)
+      const renderStart = performance.now();
+      if (window.efMap) {
+        console.log("Updating polyline on map");
+        drawBestRoute(path);
+      }
+      const renderTime = performance.now() - renderStart;
+      if (renderTime > 30) console.warn(`Polyline redraw took > 30ms: ${renderTime}ms`);
+
+      // 3. Update DOM Panel
+      const pathText = path.map(p => ZONES[p]?.name?.replace(' Stand','') || p).join(' → ');
+      document.getElementById('nav-path').textContent = pathText;
+      
+      const time = calculateRouteTime(path);
+      document.getElementById('nav-eta').innerText = "~" + time + " min";
+      
+      console.log("Best Path After Density:", path);
+      console.log("Route Time:", time);
+
+      // 6. Fix Smart Message Logic
+      updateSmartMessage(path);
+    }
+
+    function updateSmartMessage(path) {
+      let crowdedZones = [];
+      path.forEach(zone => {
+        const density = zoneDensityMap[zone] || 0;
+        if (density > 80) {
+          crowdedZones.push(zone);
+        }
+      });
+      if (crowdedZones.length > 0) {
+        document.getElementById("nav-suggestion-text").innerText = "Avoiding crowded zones: " + crowdedZones.join(", ");
+      } else {
+        document.getElementById("nav-suggestion-text").innerText = "Path looks clear.";
+      }
+    }
+
+
+    async function startNavigation() {
+      console.log("Authenticating anonymous session...");
+      try {
+        await loginAnonymously();
+      } catch (e) {
+        console.warn("Auth check failed:", e);
+      }
+
+      // Subscribe to Data
+      console.log("Subscribing to Firebase...");
+      listenZones(dens => {
+        const data = dens;
+        if (!data) return;
+        
+        Object.keys(data).forEach(zoneId => {
+          let rawD = data[zoneId].density !== undefined ? data[zoneId].density : data[zoneId];
+          zoneDensityMap[zoneId] = rawD <= 1.0 ? rawD * 100 : rawD; // Normalization safety
+        });
+        
+        console.log("Density Updated:", zoneDensityMap);
+        
+        try {
+          updateNavigation(); // Aka calculateBestRoute()
+        } catch(e) {
+          console.error("updateNavigation failed:", e);
+        }
+        refreshRoutes();
+      });
+
+      listenEmergency(state => {
+        isEmergency = state.active;
+        emergencyZone = state.zone;
+        updateNavigation();
+      });
+    }
+
+    startNavigation();
+
+  </script>
+</body>
+</html>

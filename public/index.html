@@ -315,10 +315,12 @@
       window._mapsReady = true;
       window.dispatchEvent(new CustomEvent('mapsReady'));
     };
-  </script>
-  <script 
-    src="https://maps.googleapis.com/maps/api/js?key=YOUR_MAPS_KEY_HERE&callback=initMap&libraries=maps,marker&v=weekly"
-    defer>
+    const MAPS_KEY = "AIzaSyAB-rkKZiGCOsnWR0gXhMyCOvau0iMYovs";
+    const src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&libraries=maps,marker&v=weekly&loading=async`;
+    const script = document.createElement('script');
+    script.src = src;
+    script.defer = true;
+    document.head.appendChild(script);
   </script>
 </head>
 

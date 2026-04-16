@@ -6,8 +6,14 @@ import {
   getZoneDensity, getZoneStatus, getStatusColor, getStatusEmoji,
   getRecommendedGate, getExitPlan, shouldShowNudge, getNudgeType, ZONES
 } from '/src/simulation.js';
-import { saveAttendeeData, saveFeedback, listenZones, listenNudges } from '/src/firebase.js';
+import { 
+  saveAttendeeData, saveFeedback, listenZones, listenNudges, 
+  listenEmergency 
+} from '/src/firebase.js';
 import { renderAIChat, initAIChat } from './aiChat.js';
+import { rankBestExit } from '/src/evacuationEngine.js';
+import { calculateAverageDensity } from '/src/analyticsEngine.js';
+import { loginAnonymously } from '/src/auth.js';
 
 // ─── State ────────────────────────────────────────────────────────────────
 let screen = 'intake';
@@ -447,7 +453,12 @@ function renderDuring() {
       <div>
         <h1 style="font-family:'Space Grotesk',sans-serif;font-size:1.2rem;
           font-weight:700;color:var(--text-primary);">Live Stadium 🏟️</h1>
-        <div style="font-size:0.78rem;color:var(--text-secondary);">NMS · Match in progress</div>
+        <div style="font-size:0.78rem;color:var(--text-secondary);display:flex;align-items:center;gap:6px;">
+          NMS · Match in progress 
+          <span id="att-global-density" style="padding:2px 6px;border-radius:12px;font-size:0.65rem;font-weight:700;background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">
+            CALCULATING...
+          </span>
+        </div>
       </div>
       <div style="
         display:flex;align-items:center;gap:6px;
@@ -514,14 +525,39 @@ function renderDuring() {
       <div id="during-map" style="width:100%;height:200px;"></div>
     </div>
 
+    <!-- Nearest Safe Exit (New Feature) -->
+    <div style="background:rgba(0,196,154,0.05);border:1px solid rgba(0,196,154,0.3);
+      border-radius:16px;padding:16px;">
+      <div style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;
+        color:#00C49A;text-transform:uppercase;margin-bottom:8px;">
+        🛡️ Nearest Safe Exit</div>
+      <div id="safe-exit-info" style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:1rem;color:var(--text-primary);font-weight:700;">
+          Gate <span id="safe-gate-label">-</span>
+        </div>
+        <div style="font-size:0.85rem;color:var(--text-secondary);">
+          Est. <span id="safe-time-label">-</span> min
+        </div>
+      </div>
+    </div>
+
     <!-- Exit button -->
-    <button onclick="window._attScreen('exit')" style="
-      background:none;border:1px solid var(--border-accent);
-      border-radius:12px;padding:14px;width:100%;
-      color:#00C49A;font-size:0.9rem;cursor:pointer;
-      font-weight:600;transition:all 0.2s;">
-      🚪 Plan My Exit
-    </button>
+    <div style="display:flex; gap:10px;">
+      <button onclick="window._attScreen('exit')" style="
+        flex:1;background:none;border:1px solid var(--border-accent);
+        border-radius:12px;padding:14px;
+        color:#00C49A;font-size:0.9rem;cursor:pointer;
+        font-weight:600;transition:all 0.2s;">
+        🚪 Plan My Exit
+      </button>
+      <button onclick="localStorage.setItem('ef_start_zone', '${getSectionFromAnswers()}'); window.location.href='/attendee-navigation.html';" style="
+        flex:1;background:#00C49A;border:none;
+        border-radius:12px;padding:14px;
+        color:#000;font-size:0.9rem;cursor:pointer;
+        font-weight:700;transition:all 0.2s;">
+        🧭 Navigation
+      </button>
+    </div>
   </div>
   <style>
     @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
@@ -945,6 +981,13 @@ function initDuringMap() {
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
 export async function init(navigate) {
+  // Silent anonymous authentication to establish Firebase database write permissions
+  try {
+    await loginAnonymously();
+  } catch (e) {
+    console.warn("Silent auth failed:", e);
+  }
+
   // Reset state
   screen = 'intake'; intakeStep = 0; answers = {}; currentDensities = {}; nudgeShown = false;
 
@@ -979,6 +1022,97 @@ export async function init(navigate) {
 
   // Init AI chat
   initAIChat(() => currentDensities);
+
+  function updateGlobalDensityBadge() {
+    const el = document.getElementById('att-global-density');
+    if(!el || !currentDensities) return;
+    
+    const enrichedZones = Object.entries(currentDensities).map(([id, d]) => {
+      const zDef = ZONES[id] || {};
+      return {
+        id,
+        capacity: zDef.cap || 10000,
+        currentFans: Math.round(d * (zDef.cap || 10000))
+      };
+    });
+    
+    const avgDens = calculateAverageDensity(enrichedZones);
+    let level = 'Low';
+    let color = '#00C49A';
+    if(avgDens > 85) { level = 'High'; color = '#FF4757'; }
+    else if(avgDens > 60) { level = 'Medium'; color = '#FFD166'; }
+
+    el.textContent = `Crowd: ${level}`;
+    el.style.color = color;
+    el.style.border = `1px solid ${color}`;
+    el.style.background = `${color}1A`;
+  }
+
+  // ── Emergency Listener ──
+  let lastEmergency = { active: false };
+  const unEmerg = listenEmergency((state) => {
+    lastEmergency = state;
+    let banner = document.getElementById('att-emerg-banner');
+    if (state.active) {
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'att-emerg-banner';
+        banner.style = `
+          position:fixed; bottom:0; left:0; right:0; z-index:9999;
+          background:#FF4757; color:#fff; padding:16px;
+          border-top:2px solid rgba(255,255,255,0.3);
+          box-shadow:0 -10px 30px rgba(0,0,0,0.5);
+          display:flex; flex-direction:column; gap:10px;
+          animation: slideUp 0.3s ease-out;
+        `;
+        document.body.appendChild(banner);
+      }
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:1.5rem;">🚨</span>
+          <div style="flex:1;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1rem;">EMERGENCY ALERT</div>
+            <div style="font-size:0.85rem;opacity:0.9;">${state.type} in ${ZONES[state.zone]?.name || state.zone}. Follow instructions.</div>
+          </div>
+        </div>
+        <button id="att-safe-exit-btn" style="
+          width:100%; padding:12px; background:#fff; color:#FF4757;
+          border:none; border-radius:10px; font-weight:700; cursor:pointer;">
+          VIEW SAFE EXIT ROUTE →
+        </button>
+      `;
+      document.getElementById('att-safe-exit-btn')?.addEventListener('click', () => {
+        showScreen('exit');
+      });
+    } else {
+      if (banner) banner.remove();
+    }
+    updateSafeExitUI();
+  });
+  cleanupFns.push(unEmerg);
+
+  function updateSafeExitUI() {
+    const { recommendedGate, rankedList } = rankBestExit(ZONES, currentDensities, lastEmergency.active ? lastEmergency.zone : null);
+    const gateLabel = document.getElementById('safe-gate-label');
+    const timeLabel = document.getElementById('safe-time-label');
+    if (gateLabel && timeLabel && recommendedGate) {
+      const best = rankedList.find(r => r.id === recommendedGate);
+      gateLabel.textContent = ZONES[recommendedGate]?.gate || '-';
+      timeLabel.textContent = best ? best.time : '-';
+    }
+  }
+
+  function updatePolling() {
+      updateSafeExitUI();
+      updateGlobalDensityBadge();
+  }
+
+  // Polling for UI
+  const evacInt = setInterval(updatePolling, 5000);
+  cleanupFns.push(() => clearInterval(evacInt));
+  
+  // Initial immediate call
+  updatePolling();
 
   return () => {
     cleanupFns.forEach(fn => { try { fn(); } catch(e) {} });

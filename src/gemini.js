@@ -21,7 +21,7 @@ RULES:
 
 // ─── Core API call ─────────────────────────────────────────────────────────
 async function callGemini(prompt, maxTokens = 200) {
-  if (!GEMINI_KEY || GEMINI_KEY === 'YOUR_GEMINI_KEY_HERE') {
+  if (!GEMINI_KEY || GEMINI_KEY === 'YOUR_API_KEY_HERE') {
     return null; // Key not set — use fallback
   }
   try {

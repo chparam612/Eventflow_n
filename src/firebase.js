@@ -16,9 +16,9 @@ const firebaseConfig = {
   databaseURL: "https://eventflow-4f04a-default-rtdb.firebaseio.com",
   projectId: "eventflow-4f04a",
   storageBucket: "eventflow-4f04a.firebasestorage.app",
-  messagingSenderId: "48936766474",
-  appId: "1:48936766474:web:605b8c457f3a73ca0463f3",
-  measurementId: "G-ZJ6Q3RCY0N"
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID",
+  measurementId: "YOUR_MEASUREMENT_ID"
 };
 
 
@@ -106,6 +106,21 @@ export async function saveFeedback(data) {
   }
 }
 
+export async function setEmergencyStatus(active, type = null, zone = null) {
+  try {
+    await safeWrite('emergency_status', () =>
+      set(ref(db, 'emergency/status'), {
+        active,
+        type,
+        zone,
+        timestamp: active ? Date.now() : null
+      })
+    );
+  } catch (error) {
+    console.error("Emergency write failed:", error);
+  }
+}
+
 // ─── Listeners ─────────────────────────────────────────────────────────────
 
 export function listenZones(cb) {
@@ -124,7 +139,7 @@ export function listenInstructions(zoneId, cb) {
   onValue(q, snap => {
     const items = [];
     snap.forEach(c => items.push({ id: c.key, ...c.val() }));
-    cb(items.reverse());
+    if (cb) cb(items.reverse());
   });
   return () => off(q);
 }
@@ -134,7 +149,7 @@ export function listenNudges(cb) {
   onValue(q, snap => {
     const items = [];
     snap.forEach(c => items.push({ id: c.key, ...c.val() }));
-    cb(items.reverse());
+    if (cb) cb(items.reverse());
   });
   return () => off(q);
 }
@@ -142,5 +157,20 @@ export function listenNudges(cb) {
 export function listenAllStaff(cb) {
   const r = ref(db, 'staff');
   onValue(r, snap => cb(snap.val() || {}));
+  return () => off(r);
+}
+
+export function listenEmergency(cb) {
+  const r = ref(db, 'emergency/status');
+  onValue(r, snap => {
+    const val = snap.val();
+    if (!val) {
+      // Initialize if missing
+      set(ref(db, 'emergency/status'), { active: false });
+      cb({ active: false });
+    } else {
+      cb(val);
+    }
+  });
   return () => off(r);
 }

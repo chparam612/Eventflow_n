@@ -68,7 +68,7 @@ Three panels, one live data loop — every action in the control room reflects i
 | **Firebase Realtime Database** | Live 3-panel sync — zones, staff, instructions, nudges |
 | **Firebase Authentication** | Anonymous (fans) + Email/Password (staff/control) |
 | **Firebase Hosting** | Edge-cached PWA with SPA rewrite rules |
-| **Google Maps JS API** | Satellite view of NMS with live coloured zone overlays |
+| **Google Maps JS API** | Satellite view of NMS with dynamic Density-Aware Dijkstra Routing |
 | **Gemini 2.0 Flash API** | AI chat for fans + automated crowd insights for control room |
 | **Google Fonts** | DM Sans + Space Grotesk typography |
 
@@ -78,8 +78,8 @@ Three panels, one live data loop — every action in the control room reflects i
 
 ```
 Pre-event  → Fan answers 5 intake questions → Gets personalized gate + arrival timeline
-Arrival    → Step-by-step escort screen guides fan to their seat
-During     → Live zone density strip + smart nudges (food/restroom timing)
+Arrival    → Live Google Map routing using Density-Aware Dijkstra logic avoids congested zones
+During     → Real-time path tracing with colour-coded Polylines (Green/Yellow/Red)
 Exit       → AI-ranked exit options: leave now / wait 15 min / stay for ceremony
 Post-match → Star-rating feedback → data feeds next event improvements
 ```

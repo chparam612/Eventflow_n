@@ -9,6 +9,11 @@
 'use strict';
 
 import { predictFutureDensity, detectSurgeRisk } from '../src/predictiveEngine.js';
+import { activateEmergency, calculateEvacuationRoutes } from '../src/emergencyEngine.js';
+import { getZoneStatus, getStatusColor } from '../src/simulation.js';
+import { calculateEvacuationTime, rankBestExit } from '../src/evacuationEngine.js';
+import { calculateDensityColor } from '../src/heatmapEngine.js';
+import { calculateTotalVisitors, calculateAverageDensity, findPeakZone, estimateAverageWaitTime } from '../src/analyticsEngine.js';
 
 // ──────────────────────────────────────────────────────────
 // MOCK INFRASTRUCTURE
@@ -134,11 +139,7 @@ function getZoneDensityNoNoise(tick, overrides = {}) {
   return result;
 }
 
-function getZoneStatus(density) {
-  if (density >= 0.8) return 'critical';
-  if (density >= 0.6) return 'busy';
-  return 'clear';
-}
+// getZoneStatus imported from simulation.js
 
 function getRecommendedGate(section, density) {
   const primary = { north: 'B', south: 'G', east: 'D', west: 'F' };
@@ -642,6 +643,133 @@ await test('41. Boundary Safety (No overflow/underflow)', () => {
   const zoneUnder = { currentFans: 50, entryRate: 0, exitRate: 100, capacity: 1000 };
   const resUnder = predictFutureDensity(zoneUnder);
   assertEqual(resUnder.futureFans, 0, 'Should floor at 0');
+});
+
+// ──────────────────────────────────────────────────────────
+// GROUP 8 — EMERGENCY EVACUATION (4 tests)
+// ──────────────────────────────────────────────────────────
+group('🚨 GROUP 8 — EMERGENCY EVACUATION');
+
+await test('42. Emergency Activation (Status Check)', () => {
+  const result = activateEmergency('FIRE', 'north');
+  assertEqual(result.active, true, 'Status must be active');
+  assertEqual(result.type, 'FIRE', 'Type must match');
+  assertEqual(result.zone, 'north', 'Zone must match');
+  assert(result.timestamp > 0, 'Timestamp must be present');
+});
+
+await test('43. Route Redirection (Exclude Blocked Zone)', () => {
+  const zones = { north: {}, south: {}, east: {}, west: {} };
+  const densities = { north: 0.1, south: 0.9, east: 0.2, west: 0.8 };
+  const result = calculateEvacuationRoutes(zones, densities, 'north');
+  
+  assert(!result.safeRoutes.includes('north'), 'Blocked zone MUST NOT be in safe routes');
+  assertEqual(result.safeRoutes[0], 'east', 'Safest zone (lowest density) should be first');
+});
+
+await test('44. Visual Status (Blocked = Black)', () => {
+  const status = getZoneStatus(0.1, true); // 0.1 density but blocked
+  assertEqual(status, 'blocked', 'Status should be blocked');
+  assertEqual(getStatusColor(status), '#060A10', 'Color must be black');
+});
+
+await test('45. System Stability (No crash on invalid type)', () => {
+  let threw = false;
+  try {
+    activateEmergency('ALIENS', 'stadium');
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw, 'Should throw error on undefined emergency type');
+});
+
+// ──────────────────────────────────────────────────────────
+// GROUP 9 — EVACUATION TIME ESTIMATOR (3 tests)
+// ──────────────────────────────────────────────────────────
+group('🚪 GROUP 9 — EVACUATION TIME ESTIMATOR');
+
+await test('46. Time Calculation (fans / exitRate)', () => {
+  const zone = { id: 'north', currentFans: 600, exitRate: 30 };
+  const result = calculateEvacuationTime(zone);
+  assertEqual(result.time, 20, '600 / 30 should be 20 minutes');
+  assertEqual(result.status, 'ACTIVE', 'Zone should be active');
+});
+
+await test('47. Blocked Gate (Infinity Time)', () => {
+  const zone = { id: 'north', currentFans: 600, exitRate: 30, blocked: true };
+  const result = calculateEvacuationTime(zone);
+  assertEqual(result.time, Infinity, 'Blocked zone should have Infinity time');
+  assertEqual(result.status, 'BLOCKED', 'Should have BLOCKED status');
+});
+
+await test('48. Best Gate Ranking (Lowest Time First)', () => {
+  const zones = {
+    gateA: { name: 'Gate A', cap: 1000, exitRate: 50 },
+    gateB: { name: 'Gate B', cap: 1000, exitRate: 10 }
+  };
+  const densities = { gateA: 0.5, gateB: 0.2 }; // A: 500 fans, B: 200 fans
+  // A time: 500/50 = 10 min
+  // B time: 200/10 = 20 min
+  
+  const result = rankBestExit(zones, densities);
+  assertEqual(result.recommendedGate, 'gateA', 'Gate A should be recommended (10 min < 20 min)');
+  assertEqual(result.rankedList[0].id, 'gateA', 'Gate A should be first in ranked list');
+});
+
+// ──────────────────────────────────────────────────────────
+// GROUP 10 — CROWD HEATMAP VISUALIZATION (3 tests)
+// ──────────────────────────────────────────────────────────
+group('🔥 GROUP 10 — CROWD HEATMAP VISUALIZATION');
+
+await test('49. Low Density Heatmap (10% -> BLUE)', () => {
+  const color = calculateDensityColor(10);
+  assertEqual(color, '#3498DB', '10% density should be Blue');
+});
+
+await test('50. Medium Density Heatmap (50% -> YELLOW)', () => {
+  const color = calculateDensityColor(50);
+  assertEqual(color, '#F1C40F', '50% density should be Yellow');
+});
+
+await test('51. High Density Heatmap (90% -> DARK RED)', () => {
+  const color = calculateDensityColor(90);
+  assertEqual(color, '#C0392B', '90% density should be Dark Red');
+});
+
+// ──────────────────────────────────────────────────────────
+// GROUP 11 — REAL-TIME ANALYTICS (4 tests)
+// ──────────────────────────────────────────────────────────
+group('📊 GROUP 11 — REAL-TIME ANALYTICS');
+
+const mockAnalyticsZones = [
+  { id: 'zoneA', currentFans: 500, capacity: 1000, exitRate: 25 },
+  { id: 'zoneB', currentFans: 700, capacity: 1000, exitRate: 35 },
+  { id: 'gates', currentFans: 100, capacity: 500, exitRate: 50 } // Should be ignored in wait times
+];
+
+await test('52. Total Visitors', () => {
+  const total = calculateTotalVisitors(mockAnalyticsZones);
+  assertEqual(total, 1300, 'Total visitors should be 1300');
+});
+
+await test('53. Average Density', () => {
+  const avg = calculateAverageDensity(mockAnalyticsZones);
+  // (50% + 70% + 20%) / 3 = 46.66% -> 47%
+  assertEqual(avg, 47, 'Average density should be 47%');
+});
+
+await test('54. Peak Zone', () => {
+  const peak = findPeakZone(mockAnalyticsZones);
+  assertEqual(peak.zoneId, 'zoneB', 'zoneB should be the peak zone');
+  assertEqual(peak.densityPercent, 70, 'Peak density should be 70%');
+});
+
+await test('55. Average Wait Time', () => {
+  const wait = estimateAverageWaitTime(mockAnalyticsZones);
+  // Zone A wait: 500 / 25 = 20
+  // Zone B wait: 700 / 35 = 20
+  // Gates ignored. (20 + 20) / 2 = 20
+  assertEqual(wait, 20, 'Average wait time should be 20 minutes');
 });
 
 // ──────────────────────────────────────────────────────────

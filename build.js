@@ -31,6 +31,36 @@ if (fs.existsSync(DEST)) {
 copyDir(SRC, DEST);
 console.log('  ✅ Copied src/ → public/src/');
 
+// Inject Keys
+function injectKeys() {
+  const envPath = path.join(__dirname, '.env');
+  if (!fs.existsSync(envPath)) return;
+  
+  const env = fs.readFileSync(envPath, 'utf8');
+  const keys = {};
+  env.split('\n').forEach(l => { 
+    const [k, ...v] = l.split('='); 
+    if (k && v.length) keys[k.trim()] = v.join('=').trim().replace(/['"]/g, ''); 
+  });
+  
+  const replaceInFile = (file, target, replacement) => {
+    const fullPath = path.join(__dirname, file);
+    if (fs.existsSync(fullPath) && replacement) {
+      let content = fs.readFileSync(fullPath, 'utf8');
+      content = content.replace(target, replacement);
+      fs.writeFileSync(fullPath, content);
+      console.log(`  🔑 Injected keys into ${file}`);
+    }
+  };
+
+  replaceInFile('public/src/firebase.js', 'YOUR_API_KEY', keys.FIREBASE_API_KEY);
+  replaceInFile('public/src/gemini.js', 'YOUR_GEMINI_KEY_HERE', keys.GEMINI_API_KEY);
+  replaceInFile('public/index.html', 'YOUR_MAPS_KEY_HERE', keys.GOOGLE_MAPS_API_KEY);
+  replaceInFile('public/attendee-navigation.html', 'YOUR_MAPS_KEY_HERE', keys.GOOGLE_MAPS_API_KEY);
+}
+
+injectKeys();
+
 const keyFiles = [
   'firebase.js', 'auth.js', 'gemini.js', 'simulation.js', 'router.js',
   'panels/landing.js',
