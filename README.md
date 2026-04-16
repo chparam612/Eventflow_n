@@ -7,6 +7,7 @@
 [![Firebase](https://img.shields.io/badge/Firebase-v10.8.0-yellow)](https://firebase.google.com)
 
 ✔ **38 automated test cases** covering simulation, real-time sync, edge cases, and system reliability
+✔ **Competition rules met:** Repo size < 1MB, Single Branch, Public Repo, Google Services Integrated
 
 ---
 
@@ -27,7 +28,7 @@
 
 ---
 
-## Our Vertical: Physical Event Experience
+## Chosen Vertical: Physical Event Experience
 
 EventFlow targets cricket match days as the primary use case, focusing on:
 - **Pre-arrival planning** (reduce gate rush)
@@ -37,16 +38,13 @@ EventFlow targets cricket match days as the primary use case, focusing on:
 
 ---
 
-## Core Insight — Trust First
+## Approach and Logic
 
 > *"A crowd that knows what to do doesn't need to panic."*
 
 Most crowd incidents happen because people don't have reliable information in real time. EventFlow gives every attendee a **personal plan** before they even arrive — reducing anxiety, distributing crowd load, and preventing dangerous surges.
 
----
-
-## Biomimicry Approach
-
+### Biomimicry Inspiration
 EventFlow is inspired by three natural crowd intelligence systems:
 
 - 🐜 **Ants** — pheromone trails (nudges) redirect fans away from congestion automatically
@@ -140,7 +138,7 @@ Control room:
 
 ---
 
-## Assumptions
+## Assumptions Made
 
 - Stadium coordinates: NMS, Ahmedabad (23.0921°N, 72.5952°E)
 - Match simulation: T20, 18:00 IST start, ~8-hour window
