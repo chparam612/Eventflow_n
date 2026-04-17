@@ -342,12 +342,17 @@
     window.calculateBestRoute = function() {
       const start = document.getElementById("startZone").value;
       const destination = document.getElementById("destinationZone").value;
-      console.log("Start:", start);
-      console.log("Destination:", destination);
+      console.log("Start Zone:", start);
+      console.log("Destination Zone:", destination);
+      
+      if (!start || !destination) {
+        console.error("Missing zone values");
+        return;
+      }
       
       const bestPath = window.findShortestPath(start, destination);
       if (!bestPath || bestPath.length === 0) {
-        console.error("No path found");
+        console.error("No path returned from Dijkstra");
         return;
       }
       console.log("Best Path:", bestPath);
@@ -367,19 +372,32 @@
         };
       });
 
-      // 1. Calculate Routes
-      let pathResult = findBestRoute(startZone, destinationZone, enrichedZones);
+      // 1. Calculate Routes — use all known zones as fallback if densities empty
+      const zonesForRouting = enrichedZones.length > 0 ? enrichedZones
+        : Object.keys(zoneCoordinates).map(id => ({
+            id, capacity: 10000, currentFans: 0, blocked: false
+          }));
+
+      let pathResult = findBestRoute(startZone, destinationZone, zonesForRouting);
+      if (!pathResult || !pathResult.path || pathResult.path.length === 0) {
+        console.error("updateNavigation: no path found for", startZone, "->", destinationZone);
+        return;
+      }
       const path = pathResult.path;
       
-      let altResult = findAlternatePath(startZone, destinationZone, path, enrichedZones);
+      let altResult = findAlternatePath(startZone, destinationZone, path, zonesForRouting);
 
       // 2. Map Update (Primary + Alternate)
       if (window.efMap) {
         drawBestRoute(path);
+        console.log("Best Route Drawn");
         if (altResult && altResult.path) drawAlternateRoute(altResult.path);
         else clearBlueRoutes();
-        
+        console.log("Alternate Route Drawn");
         startMarkerSimulation(path);
+      } else {
+        // Map not ready yet — will re-run once mapsReady fires
+        console.warn("Map not ready, queuing route draw");
       }
 
       // 3. Update DOM Panel
@@ -391,10 +409,6 @@
       
       generateInstructions(path);
       updateSmartMessage(path);
-      
-      // Verification logs Phase 7
-      console.log("Best Route Drawn");
-      console.log("Alternate Route Drawn");
       console.log("Smart Suggestion Updated");
     }
 
@@ -496,6 +510,14 @@
         window.calculateBestRoute();
       });
     }
+
+    // Auto-route on page load — fires after map is ready
+    window.addEventListener('mapsReady', () => {
+      console.log("Map ready — drawing initial best route");
+      if (document.getElementById("startZone")?.value) {
+        window.calculateBestRoute();
+      }
+    });
 
     startNavigation();
 
