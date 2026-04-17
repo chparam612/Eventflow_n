@@ -497,12 +497,11 @@
         console.log("Density Updated:", zoneDensityMap);
         
         try {
-          window.calculateBestRoute(); // Re-route on density change
+          window.calculateBestRoute(); // Re-route on density change — handles full route draw cycle
         } catch(e) {
           console.error("calculateBestRoute failed:", e);
         }
-        // Only refresh zone overlays if map is already ready
-        if (window.efMap) refreshRoutes();
+        // NOTE: refreshRoutes() removed — zone graph drawn once at mapsReady, not on every density tick
       });
 
       listenEmergency(state => {
