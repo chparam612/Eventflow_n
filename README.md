@@ -173,12 +173,12 @@ npm test
 
 Expected result:
 ```
-✓ 55 Core Engine Tests Passed
-✓ 6 Navigation Integration Hooks Passed
-✓ 7 UI Alias Matrix Endpoints Passed
+✓ 50 Core Engine Tests Passed
+✓ 6 Navigation Integration Tests Passed
+✓ 5 Navigation Audit Tests Passed
 
-Total: 68/68 Tests natively verified globally.
-🎉 All tests passed — EventFlow V2 is completely stable.
+  Results: 61/61 tests passed
+🎉 All tests passed — EventFlow V2 is stable.
 ```
 
 ---
@@ -206,7 +206,15 @@ firebase deploy
 
 ## ♿ Accessibility
 
-- All buttons have `title` attributes and emoji labels
+- All interactive buttons have descriptive `aria-label` attributes
+- `aria-live="polite"` on AI chat messages container (`role="log"`)
+- `aria-live="assertive"` on staff instruction card (`role="alert"`)
+- `aria-live="polite"` on control room zone alerts (`role="status"`)
+- `:focus-visible` CSS with `#00C49A` outline for keyboard navigation
+- `.sr-only` utility class for screen-reader-only text
+- Login inputs wrapped in semantic `<form>` with `autocomplete` attributes
+- Zone status pills: `role="list/listitem"` with density % in `aria-label`
+- Decorative emoji icons marked `aria-hidden="true"`
 - Color is never the sole status indicator — text labels always accompany colors
 - Minimum font size: 0.78rem (~12.5px) throughout
 - Dark theme meets WCAG AA contrast ratio
