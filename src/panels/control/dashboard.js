@@ -81,7 +81,7 @@ export function render() {
             font-size:1.1rem;color:#00C49A);">0</div>
           <div style="font-size:0.68rem;color:var(--text-muted);">staff online</div>
         </div>
-        <button id="ctrl-logout-btn" style="
+        <button id="ctrl-logout-btn" aria-label="Log out of EventFlow" style="
           background:none;border:1px solid var(--border);
           border-radius:8px;color:var(--text-secondary);
           font-size:0.78rem;padding:6px 12px;cursor:pointer;">
@@ -286,7 +286,8 @@ export function render() {
               ['Open backup gate', '🚪 Backup'],
               ['Medical team needed', '🚑 Medical']
             ].map(([msg, label]) => `
-              <button class="quick-instr-btn" data-msg="${msg}" style="
+              <button class="quick-instr-btn" data-msg="${msg}"
+                aria-label="Quick instruction: ${msg}" style="
                 background:var(--bg-card2);border:1px solid var(--border);
                 border-radius:8px;padding:8px 4px;font-size:0.75rem;
                 color:var(--text-primary);cursor:pointer;transition:all 0.2s;">${label}</button>
@@ -298,13 +299,13 @@ export function render() {
             font-size:0.85rem;"></textarea>
 
           <div style="display:flex;gap:6px;">
-            <button id="ctrl-send-staff" style="
+            <button id="ctrl-send-staff" aria-label="Send instruction to staff in selected zone" style="
               flex:1;background:var(--orange);color:#fff;border:none;
               border-radius:8px;padding:9px;font-weight:600;
               font-size:0.82rem;cursor:pointer;transition:all 0.2s;">
               📡 Staff
             </button>
-            <button id="ctrl-send-nudge" style="
+            <button id="ctrl-send-nudge" aria-label="Broadcast nudge notification to all attendees" style="
               flex:1;background:rgba(0,196,154,0.12);color:#00C49A;
               border:1px solid rgba(0,196,154,0.25);
               border-radius:8px;padding:9px;font-weight:600;
@@ -324,7 +325,7 @@ export function render() {
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
             <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
               color:var(--text-muted);text-transform:uppercase;">🤖 AI Insights</div>
-            <button id="ai-refresh-btn" style="
+            <button id="ai-refresh-btn" aria-label="Refresh AI crowd insights" style="
               background:none;border:none;font-size:0.72rem;
               color:var(--text-muted);cursor:pointer;padding:2px 4px;">↻ Refresh</button>
           </div>

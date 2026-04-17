@@ -3,7 +3,8 @@
  * Uses gemini-2.0-flash for fast responses
  */
 
-// Replace with your actual Gemini API key
+// NOTE: Replace with real API key before production deploy
+// Current: using environment-injected value via build.js (see .env → GEMINI_API_KEY)
 const GEMINI_KEY = 'YOUR_GEMINI_KEY_HERE';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
 

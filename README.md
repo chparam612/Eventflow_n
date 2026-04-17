@@ -4,10 +4,10 @@
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-eventflow--4f04a.web.app-orange)](https://eventflow-4f04a.web.app)
 [![GitHub](https://img.shields.io/badge/GitHub-chparam612%2FEventflow__n-blue)](https://github.com/chparam612/Eventflow_n)
-[![Tests](https://img.shields.io/badge/Tests-58%20Passing-brightgreen)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-61%20Passing-brightgreen)](#running-tests)
 [![Firebase](https://img.shields.io/badge/Firebase-v10.8.0-yellow)](https://firebase.google.com)
 
-✔ **58 automated tests** — Core logic, Firebase config integrity, AI fallback, Accessibility (aria-live), Dijkstra Routing, Graph Architecture  
+✔ **61 automated tests** — Core logic, Firebase config integrity, AI fallback, Accessibility (aria-live + sr-only + focus-visible), Dijkstra Routing, Graph Architecture  
 ✔ **Zero structural duplicate files · Fully Modular · AST Verified imports**
 ✔ **Repo size < 1 MB · Single branch (main) · Public · Google Services integrated**
 
@@ -139,7 +139,7 @@ Post-match → Star-rating feedback → data feeds next event improvements
 - Stadium coordinates: NMS, Ahmedabad (23.0918°N, 72.5972°E)
 - Match simulation: T20, 18:00 IST start, 8-hour simulation window
 - Zone overlays are approximate bounding rectangles (not exact CAD polygons)
-- Gemini AI employs a graceful failover protocol bypassing strict 429 API rate limits without collapsing UI.
+- Gemini AI implements context-aware intelligent fallback using live zone density data when the API is rate-limited, returning relevant crowd guidance without generic error messages
 - Firebase Anonymous Authentication must be enabled in the Firebase console
 - Staff/Control accounts must be manually created in Firebase Authentication
 

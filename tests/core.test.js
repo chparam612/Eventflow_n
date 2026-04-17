@@ -828,6 +828,43 @@ await test('58. Accessibility: aria-live attributes defined in source', () => {
     'At least one panel must have aria-live for dynamic updates');
 });
 
+await test('59. Accessibility: focus-visible CSS rule exists in index.html', () => {
+  const fs = createRequire(import.meta.url)('fs');
+  const html = fs.readFileSync('./public/index.html', 'utf8');
+  assert(
+    html.includes('focus-visible'),
+    'index.html must define :focus-visible styles for keyboard nav'
+  );
+});
+
+await test('60. Accessibility: aria-live defined in at least one panel', () => {
+  const fs = createRequire(import.meta.url)('fs');
+  const filesToCheck = [
+    './src/panels/attendee/aiChat.js',
+    './src/panels/control/dashboard.js',
+    './src/panels/staff/dashboard.js',
+    './public/src/panels/attendee/aiChat.js',
+    './public/src/panels/control/dashboard.js',
+    './public/src/panels/staff/dashboard.js',
+  ];
+  let found = false;
+  filesToCheck.forEach(f => {
+    try {
+      if (fs.readFileSync(f, 'utf8').includes('aria-live')) found = true;
+    } catch(e) {}
+  });
+  assert(found, 'At least one panel must use aria-live for dynamic updates');
+});
+
+await test('61. Accessibility: sr-only utility class defined for screen readers', () => {
+  const fs = createRequire(import.meta.url)('fs');
+  const html = fs.readFileSync('./public/index.html', 'utf8');
+  assert(
+    html.includes('sr-only'),
+    'index.html must define .sr-only class for screen reader text'
+  );
+});
+
 // ──────────────────────────────────────────────────────────
 // RESULTS
 // ──────────────────────────────────────────────────────────

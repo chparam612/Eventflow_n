@@ -31,7 +31,7 @@ export function render() {
       <div style="display:flex;align-items:center;gap:10px;">
         <span id="staff-conn-dot" style="
           width:7px;height:7px;border-radius:50%;background:#00C49A;display:inline-block;"></span>
-        <button id="staff-logout-btn" style="
+        <button id="staff-logout-btn" aria-label="Log out of EventFlow" style="
           background:none;border:1px solid var(--border);border-radius:8px;
           color:var(--text-secondary);font-size:0.78rem;padding:5px 10px;">
           Log Out
@@ -46,7 +46,7 @@ export function render() {
         background: var(--bg-card);
         border: 1px solid rgba(0,196,154,0.25);
         border-radius: 16px; padding: 16px;"
-        aria-live="assertive" aria-label="New instructions from control room" role="status">
+        aria-live="assertive" aria-label="Urgent instructions from control room" role="alert">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
           <span style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
             color:#00C49A;text-transform:uppercase;">📡 Control Room</span>
@@ -54,7 +54,7 @@ export function render() {
         <p id="instruction-text" style="
           color:var(--text-primary);font-size:0.92rem;line-height:1.5;
           margin-bottom:12px;">No instructions — all clear ✓</p>
-        <button id="ack-btn" style="
+        <button id="ack-btn" aria-label="Acknowledge instruction from control room" style="
           background:rgba(0,196,154,0.1);border:1px solid rgba(0,196,154,0.25);
           border-radius:8px;color:#00C49A;font-size:0.82rem;
           padding:8px 16px;cursor:pointer;transition:all 0.2s;
@@ -70,7 +70,7 @@ export function render() {
           Zone Status — Report Live</div>
 
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <button id="btn-clear" style="
+          <button id="btn-clear" aria-label="Report my zone as clear" style="
             width:100%; padding: 20px; border-radius: 14px;
             font-family: 'Space Grotesk',sans-serif;
             font-size: 1.1rem; font-weight: 700;
@@ -80,7 +80,7 @@ export function render() {
             display: flex; align-items: center; justify-content: center; gap: 10px;">
             🟢 My Zone is CLEAR
           </button>
-          <button id="btn-crowded" style="
+          <button id="btn-crowded" aria-label="Report my zone as crowded" style="
             width:100%; padding: 20px; border-radius: 14px;
             font-family: 'Space Grotesk',sans-serif;
             font-size: 1.1rem; font-weight: 700;
@@ -101,33 +101,33 @@ export function render() {
           color:var(--text-muted);text-transform:uppercase;margin-bottom:12px;">
           Quick Report</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <button class="quick-report-btn" data-type="overcrowding" style="
+          <button class="quick-report-btn" data-type="overcrowding" aria-label="Quick report: overcrowding" style="
             background: var(--bg-card2); border: 1px solid var(--border);
             border-radius: 10px; padding: 12px 8px; font-size: 0.82rem;
             color: var(--text-primary); cursor: pointer; transition: all 0.2s;
             display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <span style="font-size:1.2rem;">👥</span>Overcrowding
+            <span style="font-size:1.2rem;" aria-hidden="true">👥</span>Overcrowding
           </button>
-          <button class="quick-report-btn" data-type="clear" style="
+          <button class="quick-report-btn" data-type="clear" aria-label="Quick report: area is clear" style="
             background: var(--bg-card2); border: 1px solid var(--border);
             border-radius: 10px; padding: 12px 8px; font-size: 0.82rem;
             color: var(--text-primary); cursor: pointer; transition: all 0.2s;
             display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <span style="font-size:1.2rem;">✅</span>Area Clear
+            <span style="font-size:1.2rem;" aria-hidden="true">✅</span>Area Clear
           </button>
-          <button class="quick-report-btn" data-type="medical" style="
+          <button class="quick-report-btn" data-type="medical" aria-label="Quick report: medical assistance needed" style="
             background: var(--bg-card2); border: 1px solid var(--border);
             border-radius: 10px; padding: 12px 8px; font-size: 0.82rem;
             color: var(--text-primary); cursor: pointer; transition: all 0.2s;
             display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <span style="font-size:1.2rem;">🚑</span>Medical Needed
+            <span style="font-size:1.2rem;" aria-hidden="true">🚑</span>Medical Needed
           </button>
-          <button class="quick-report-btn" data-type="other" style="
+          <button class="quick-report-btn" data-type="other" aria-label="Quick report: other issue" style="
             background: var(--bg-card2); border: 1px solid var(--border);
             border-radius: 10px; padding: 12px 8px; font-size: 0.82rem;
             color: var(--text-primary); cursor: pointer; transition: all 0.2s;
             display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <span style="font-size:1.2rem;">⚠️</span>Other
+            <span style="font-size:1.2rem;" aria-hidden="true">⚠️</span>Other
           </button>
         </div>
       </div>
@@ -139,7 +139,7 @@ export function render() {
         <textarea id="custom-report-text" placeholder="Describe the situation…" style="
           width:100%;height:80px;resize:none;border-radius:8px;
           font-size:0.88rem;padding:10px;"></textarea>
-        <button id="custom-report-send" style="
+        <button id="custom-report-send" aria-label="Submit custom situation report" style="
           margin-top:8px;background:var(--orange);color:#fff;border:none;
           border-radius:8px;padding:10px 20px;font-weight:600;cursor:pointer;width:100%;">
           Send Report
@@ -179,7 +179,7 @@ export function render() {
       <p id="staff-emerg-msg" style="color:#fff;font-size:1.1rem;line-height:1.5;margin-bottom:30px;">
         Evacuate fans immediately!
       </p>
-      <button id="staff-emerg-ack" style="
+      <button id="staff-emerg-ack" aria-label="Confirm and begin zone evacuation" style="
         width:100%;padding:18px;background:#FF4757;color:#fff;
         border:none;border-radius:12px;font-size:1.1rem;font-weight:700;
         cursor:pointer;box-shadow:0 10px 20px rgba(255,71,87,0.3);">
