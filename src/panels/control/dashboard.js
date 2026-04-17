@@ -536,6 +536,9 @@ export async function init(navigate) {
     if (!mapEl || !window.google?.maps) return;
 
     mapInstance = new window.google.maps.Map(mapEl, {
+      center: { lat: 23.0918, lng: 72.5976 },
+      zoom: 17,
+      mapId: 'e4b9db3073df26e8',
       mapTypeId: 'satellite',
       disableDefaultUI: false,
       zoomControl: true,
