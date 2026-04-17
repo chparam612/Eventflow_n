@@ -92,12 +92,14 @@ function getSectionFromAnswers() {
 // ─── Shared Zone Status Strip ─────────────────────────────────────────────
 function zoneStrip(densities) {
   const main = ['north', 'south', 'east', 'west'];
-  return `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;" role="list" aria-label="Live zone crowd status">
     ${main.map(id => {
       const d = densities[id] || 0;
       const s = getZoneStatus(d);
-      return `<span class="pill pill-${s}">
-        ${getStatusEmoji(s)} ${ZONES[id]?.name?.replace(' Stand', '') || id}
+      const zoneName = ZONES[id]?.name?.replace(' Stand', '') || id;
+      return `<span class="pill pill-${s}" role="listitem"
+        aria-label="${zoneName} stand status: ${s.toLowerCase()}, ${Math.round(d * 100)}% capacity">
+        ${getStatusEmoji(s)} ${zoneName}
         <span style="font-family:'Space Grotesk',sans-serif;">${Math.round(d * 100)}%</span>
       </span>`;
     }).join('')}
@@ -164,7 +166,8 @@ function renderIntake() {
     <!-- Options -->
     <div style="display:flex;flex-direction:column;gap:8px;">
       ${q.options.map(opt => `
-        <button class="intake-opt" data-qid="${q.id}" data-val="${opt.id}" style="
+        <button class="intake-opt" data-qid="${q.id}" data-val="${opt.id}"
+          aria-label="${opt.label} — ${opt.sub}" aria-pressed="${answers[q.id] === opt.id ? 'true' : 'false'}" style="
           background:var(--bg-card);border:1px solid var(--border);
           border-radius:14px;padding:16px 18px;text-align:left;
           cursor:pointer;transition:all 0.2s;width:100%;
@@ -180,7 +183,7 @@ function renderIntake() {
               border:2px solid ${answers[q.id] === opt.id ? '#00C49A' : 'rgba(255,255,255,0.15)'};
               background:${answers[q.id] === opt.id ? '#00C49A' : 'transparent'};
               display:flex;align-items:center;justify-content:center;
-              font-size:0.7rem;color:#000;">
+              font-size:0.7rem;color:#000;" aria-hidden="true">
               ${answers[q.id] === opt.id ? '✓' : ''}
             </div>
           </div>
@@ -188,20 +191,20 @@ function renderIntake() {
       `).join('')}
 
       ${intakeStep + 1 < totalSteps
-        ? `<button id="intake-next-btn" style="
+        ? `<button id="intake-next-btn" aria-label="Next question" style="
             margin-top:8px;background:var(--green);color:#000;
             font-weight:700;border:none;border-radius:12px;
             padding:16px;font-size:0.95rem;cursor:pointer;
             opacity:${answers[q.id] ? '1' : '0.4'};
-            transition:all 0.2s;" ${!answers[q.id] ? 'disabled' : ''}>
+            transition:all 0.2s;" ${!answers[q.id] ? 'disabled aria-disabled="true"' : ''}>
             Next →
           </button>`
-        : `<button id="intake-done-btn" style="
+        : `<button id="intake-done-btn" aria-label="Generate my personalised crowd plan" style="
             margin-top:8px;background:var(--green);color:#000;
             font-weight:700;border:none;border-radius:12px;
             padding:18px;font-size:1rem;cursor:pointer;
             opacity:${answers[q.id] ? '1' : '0.4'};
-            transition:all 0.2s;" ${!answers[q.id] ? 'disabled' : ''}>
+            transition:all 0.2s;" ${!answers[q.id] ? 'disabled aria-disabled="true"' : ''}>
             Generate My Plan ✨
           </button>`
       }
