@@ -121,9 +121,8 @@ Response must be valid JSON only, no markdown, no extra text:
 
   const raw = await callGemini(prompt, 350);
 
-  // If raw is null OR is a non-JSON string (e.g. 429 notice), use deterministic fallback
-  if (!raw || !raw.trim().startsWith('{')) {
-    // Deterministic fallback insights based on actual densities
+  // Guard 1 — null / empty response
+  if (!raw) {
     const critical = Object.entries(densities).filter(([, d]) => d > 0.8);
     const busy = Object.entries(densities).filter(([, d]) => d > 0.6 && d <= 0.8);
     return {
@@ -139,14 +138,39 @@ Response must be valid JSON only, no markdown, no extra text:
     };
   }
 
+  // Guard 2 — 429 rate-limit fallback string (starts with "Notice")
+  if (
+    typeof raw === 'string' &&
+    raw.startsWith('Notice')
+  ) {
+    console.warn('[Gemini] Fallback detected — skipping parse');
+    return {
+      summary: 'AI temporarily unavailable due to rate limit.',
+      recommendation: 'Using cached fallback insights.',
+      insights: [
+        { type: 'info', zone: 'All Zones', message: 'AI rate-limited — using deterministic fallback', action: 'Monitor zones manually' }
+      ]
+    };
+  }
+
+  // Guard 3 — non-JSON string (does not start with '{')
+  if (!raw.trim().startsWith('{')) {
+    console.warn('[Gemini] Unexpected response format — skipping parse');
+    return { insights: [] };
+  }
+
+  // Safe JSON parse
   try {
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
-    // Validate structure
     if (Array.isArray(parsed.insights)) return parsed;
     throw new Error('Invalid shape');
-  } catch (e) {
-    // Suppress — parse failure returns empty gracefully
-    return { insights: [] };
+  } catch (error) {
+    console.warn('[Gemini] JSON parse failed:', error.message);
+    return {
+      summary: 'AI insights unavailable.',
+      recommendation: 'Fallback system active.',
+      insights: []
+    };
   }
 }
