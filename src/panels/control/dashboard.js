@@ -590,18 +590,22 @@ export async function init(navigate) {
     ];
 
     gatePositions.forEach(g => {
-      new window.google.maps.Marker({
+      // AdvancedMarkerElement — modern Maps JS API (replaces deprecated google.maps.Marker)
+      const pinEl = document.createElement('div');
+      pinEl.style.cssText = `
+        width:22px;height:22px;border-radius:50%;
+        background:#131C2E;border:1px solid rgba(255,255,255,0.3);
+        display:flex;align-items:center;justify-content:center;
+        color:#F0F4F8;font-size:11px;font-weight:700;
+        font-family:'Space Grotesk',sans-serif;
+      `;
+      pinEl.textContent = g.label;
+      pinEl.setAttribute('title', 'Gate ' + g.label);
+
+      new window.google.maps.marker.AdvancedMarkerElement({
         position: { lat: g.lat, lng: g.lng },
         map: mapInstance,
-        label: { text: g.label, color: '#F0F4F8', fontSize: '11px', fontWeight: '700' },
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#131C2E',
-          fillOpacity: 0.9,
-          strokeColor: 'rgba(255,255,255,0.3)',
-          strokeWeight: 1
-        },
+        content: pinEl,
         title: 'Gate ' + g.label
       });
     });
