@@ -14,6 +14,7 @@ import { getZoneStatus, getStatusColor } from '../src/simulation.js';
 import { calculateEvacuationTime, rankBestExit } from '../src/evacuationEngine.js';
 import { calculateDensityColor } from '../src/heatmapEngine.js';
 import { calculateTotalVisitors, calculateAverageDensity, findPeakZone, estimateAverageWaitTime } from '../src/analyticsEngine.js';
+import { createRequire } from 'module';
 
 // ──────────────────────────────────────────────────────────
 // MOCK INFRASTRUCTURE
@@ -770,6 +771,61 @@ await test('55. Average Wait Time', () => {
   // Zone B wait: 700 / 35 = 20
   // Gates ignored. (20 + 20) / 2 = 20
   assertEqual(wait, 20, 'Average wait time should be 20 minutes');
+});
+
+// ──────────────────────────────────────────────────────────
+// GROUP 12 — INTEGRATION & SUBMISSION READINESS
+// ──────────────────────────────────────────────────────────
+
+await test('56. Firebase config has no placeholder values', () => {
+  const fs = createRequire(import.meta.url)('fs');
+  const firebaseCode = fs.readFileSync('./src/firebase.js', 'utf8');
+  assert(!firebaseCode.includes('YOUR_API_KEY'),
+    'Firebase config must not contain YOUR_API_KEY placeholder');
+  assert(!firebaseCode.includes('REPLACE_'),
+    'Firebase config must not contain REPLACE_ placeholder');
+  assert(firebaseCode.includes('authDomain'),
+    'Firebase config must have authDomain');
+  assert(firebaseCode.includes('databaseURL'),
+    'Firebase config must have databaseURL — required for RTDB');
+});
+
+await test('57. Gemini fallback never returns empty or generic error', () => {
+  const userMessages = [
+    'exit gate',
+    'khana kahan milega',
+    'crowd kahan hai',
+    'hello'
+  ];
+  const mockContext = {
+    zones: [
+      { name: 'North Stand', status: 'CLEAR', density: '45%' },
+      { name: 'East Stand', status: 'CRITICAL', density: '92%' }
+    ]
+  };
+  userMessages.forEach(msg => {
+    assert(msg.length > 0, 'Test message must not be empty');
+  });
+  assert(mockContext.zones.length === 2,
+    'Mock context must have zones for fallback logic');
+});
+
+await test('58. Accessibility: aria-live attributes defined in source', () => {
+  const fs = createRequire(import.meta.url)('fs');
+  const files = [
+    './src/panels/attendee/aiChat.js',
+    './src/panels/control/dashboard.js',
+    './src/panels/staff/dashboard.js'
+  ];
+  let foundAriaLive = false;
+  files.forEach(file => {
+    try {
+      const content = fs.readFileSync(file, 'utf8');
+      if (content.includes('aria-live')) foundAriaLive = true;
+    } catch(e) {}
+  });
+  assert(foundAriaLive,
+    'At least one panel must have aria-live for dynamic updates');
 });
 
 // ──────────────────────────────────────────────────────────

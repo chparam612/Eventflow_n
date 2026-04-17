@@ -63,19 +63,41 @@ export async function askAttendee(message, crowdContext) {
     if (reply) return reply;
     throw new Error('empty response');
   } catch(e) {
-    // Fallback with helpful info from context
-    const densities = crowdContext || {};
-    const clearZones = Object.entries(densities)
-      .filter(([z, d]) => d < 0.6)
-      .map(([z]) => z.replace(' Stand',''))
-      .slice(0,2);
-    
-    if (clearZones.length > 0) {
-      return 'Based on current data: ' + 
-        clearZones.join(' and ') + 
-        ' areas are clear right now. Head to Gate B for the smoothest entry.';
+    // Use live crowd context for intelligent fallback
+    if (crowdContext && crowdContext.zones) {
+      const clear = crowdContext.zones
+        .filter(z => z.status === 'CLEAR')
+        .map(z => z.name);
+      const busy = crowdContext.zones
+        .filter(z => z.status === 'CRITICAL' || z.status === 'BUSY')
+        .map(z => z.name);
+
+      let response = '';
+      if (message.toLowerCase().includes('exit') ||
+          message.toLowerCase().includes('gate') ||
+          message.toLowerCase().includes('niklo') ||
+          message.toLowerCase().includes('bahar')) {
+        response = clear.length > 0
+          ? `Gate ${clear[0].replace(' Stand','') === 'North' ? 'B' :
+             clear[0].replace(' Stand','') === 'South' ? 'G' :
+             clear[0].replace(' Stand','') === 'East' ? 'D' : 'F'} is clearest right now (${clear[0]} area). Head there for fastest exit.`
+          : 'Gate B on the North side is your best exit route right now.';
+      } else if (message.toLowerCase().includes('food') ||
+                 message.toLowerCase().includes('khana')) {
+        response = 'Best time for food is first 15 min of play — concession lines are shortest then. North concourse usually has the shortest queues.';
+      } else if (message.toLowerCase().includes('crowd') ||
+                 message.toLowerCase().includes('bheed')) {
+        response = busy.length > 0
+          ? `Avoid ${busy[0]} area right now — it is at high capacity. ${clear.length > 0 ? clear[0] + ' side is clear.' : 'Try alternative entrances.'}`
+          : 'All zones are manageable right now. Proceed normally.';
+      } else {
+        response = clear.length > 0
+          ? `${clear[0]} area is clear right now. For any movement, that direction is recommended.`
+          : 'Follow venue staff instructions for guidance. All systems operational.';
+      }
+      return response;
     }
-    return 'Gate B is currently the least crowded entrance. For food, North concourse has shorter lines right now.';
+    return 'Gate B (North entrance) is least crowded right now. For food, try the North concourse. Exit early via Gate G South to avoid the rush.';
   }
 }
 

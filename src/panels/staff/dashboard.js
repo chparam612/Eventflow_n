@@ -45,7 +45,8 @@ export function render() {
       <div id="instruction-card" style="
         background: var(--bg-card);
         border: 1px solid rgba(0,196,154,0.25);
-        border-radius: 16px; padding: 16px;">
+        border-radius: 16px; padding: 16px;"
+        aria-live="assertive" aria-label="New instructions from control room" role="status">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
           <span style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
             color:#00C49A;text-transform:uppercase;">📡 Control Room</span>

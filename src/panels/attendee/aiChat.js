@@ -21,7 +21,8 @@ export function renderAIChat() {
       display: flex; align-items: center; justify-content: center;
       font-size: 22px; transition: all 0.25s;
       box-shadow: 0 4px 20px rgba(0,196,154,0.35);"
-      title="Ask EventFlow AI">
+      title="Ask EventFlow AI"
+      aria-label="Open AI assistant">
       🤖
     </button>
 
@@ -48,14 +49,16 @@ export function renderAIChat() {
         </div>
         <button id="ai-chat-close" style="
           background:none;border:none;color:var(--text-muted);
-          font-size:1.2rem;cursor:pointer;padding:4px;">✕</button>
+          font-size:1.2rem;cursor:pointer;padding:4px;"
+          aria-label="Close AI assistant">✕</button>
       </div>
 
       <!-- Messages -->
       <div id="ai-chat-messages" style="
         flex:1;overflow-y:auto;padding:16px;
         display:flex;flex-direction:column;gap:12px;
-        min-height:160px;">
+        min-height:160px;"
+        aria-live="polite" aria-label="AI assistant conversation" role="log">
         <div style="
           background:var(--bg-card2);border:1px solid var(--border);
           border-radius:12px 12px 12px 4px;padding:12px 14px;
@@ -89,7 +92,8 @@ export function renderAIChat() {
           width:40px;height:40px;color:#000;
           font-size:1rem;cursor:pointer;flex-shrink:0;
           display:flex;align-items:center;justify-content:center;
-          transition:all 0.2s;">→</button>
+          transition:all 0.2s;"
+          aria-label="Send message">→</button>
       </div>
     </div>`;
 }

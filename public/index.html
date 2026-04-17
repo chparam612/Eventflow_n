@@ -308,6 +308,18 @@
     }
   </style>
 
+  <!-- Accessibility: keyboard focus-visible indicator -->
+  <style>
+    :focus-visible {
+      outline: 2px solid #00C49A;
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+    :focus:not(:focus-visible) {
+      outline: none;
+    }
+  </style>
+
   <!-- Google Maps: window.initMap MUST be defined before the script tag -->
   <script>
     window.initMap = function() {

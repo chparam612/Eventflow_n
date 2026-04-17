@@ -11,14 +11,14 @@ import {
 // ─── Firebase Config ───────────────────────────────────────────────────────
 // Replace with your actual Firebase project config
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
+  apiKey: "AIzaSyBYRQswMKJZITJwta4IBnZfdQ-Sw7kercQ",
   authDomain: "eventflow-4f04a.firebaseapp.com",
   databaseURL: "https://eventflow-4f04a-default-rtdb.firebaseio.com",
   projectId: "eventflow-4f04a",
   storageBucket: "eventflow-4f04a.firebasestorage.app",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID"
+  messagingSenderId: "48936766474",
+  appId: "1:48936766474:web:605b8c457f3a73ca0463f3",
+  measurementId: "G-ZJ6Q3RCY0N"
 };
 
 

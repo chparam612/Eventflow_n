@@ -190,7 +190,8 @@ export function render() {
           <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
             color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
             🚨 Live Alerts</div>
-          <div id="alert-list" style="display:flex;flex-direction:column;gap:6px;">
+          <div id="alert-list" style="display:flex;flex-direction:column;gap:6px;"
+            aria-live="polite" aria-label="Live zone status updates">
             <div style="color:var(--text-muted);font-size:0.8rem;">All zones normal</div>
           </div>
         </div>

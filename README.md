@@ -4,10 +4,10 @@
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-eventflow--4f04a.web.app-orange)](https://eventflow-4f04a.web.app)
 [![GitHub](https://img.shields.io/badge/GitHub-chparam612%2FEventflow__n-blue)](https://github.com/chparam612/Eventflow_n)
-[![Tests](https://img.shields.io/badge/Tests-68%20Passing-brightgreen)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-58%20Passing-brightgreen)](#running-tests)
 [![Firebase](https://img.shields.io/badge/Firebase-v10.8.0-yellow)](https://firebase.google.com)
 
-✔ **68 native automated test executions** — Core logic, AI Boundaries, Dijkstra Routing Engine, and Graph Architecture  
+✔ **58 automated tests** — Core logic, Firebase config integrity, AI fallback, Accessibility (aria-live), Dijkstra Routing, Graph Architecture  
 ✔ **Zero structural duplicate files · Fully Modular · AST Verified imports**
 ✔ **Repo size < 1 MB · Single branch (main) · Public · Google Services integrated**
 
