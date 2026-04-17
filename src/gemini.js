@@ -121,7 +121,8 @@ Response must be valid JSON only, no markdown, no extra text:
 
   const raw = await callGemini(prompt, 350);
 
-  if (!raw) {
+  // If raw is null OR is a non-JSON string (e.g. 429 notice), use deterministic fallback
+  if (!raw || !raw.trim().startsWith('{')) {
     // Deterministic fallback insights based on actual densities
     const critical = Object.entries(densities).filter(([, d]) => d > 0.8);
     const busy = Object.entries(densities).filter(([, d]) => d > 0.6 && d <= 0.8);
@@ -145,7 +146,7 @@ Response must be valid JSON only, no markdown, no extra text:
     if (Array.isArray(parsed.insights)) return parsed;
     throw new Error('Invalid shape');
   } catch (e) {
-    console.warn('[Gemini] Insight parse failed:', e.message);
+    // Suppress — parse failure returns empty gracefully
     return { insights: [] };
   }
 }

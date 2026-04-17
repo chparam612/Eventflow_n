@@ -43,38 +43,44 @@ export function render() {
       <!-- Error -->
       <div id="staff-login-error" class="error-msg" style="margin-bottom: 16px;"></div>
 
-      <!-- Email -->
-      <div style="margin-bottom: 14px;">
-        <label style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-          Staff Email</label>
-        <input type="email" id="staff-email"
-          placeholder="staff@eventflow.demo"
-          style="width:100%;" autocomplete="username" />
-      </div>
+      <form id="staff-login-form" action="#" onsubmit="return false;" autocomplete="on"
+        style="display:flex;flex-direction:column;gap:0;">
 
-      <!-- Password -->
-      <div style="margin-bottom: 14px;">
-        <label style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-          Password</label>
-        <input type="password" id="staff-pass"
-          placeholder="••••••••"
-          style="width:100%;" autocomplete="current-password" />
-      </div>
+        <!-- Email -->
+        <div style="margin-bottom: 14px;">
+          <label for="staff-email" style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+            Staff Email</label>
+          <input type="email" id="staff-email" name="email"
+            placeholder="staff@eventflow.demo"
+            style="width:100%;" autocomplete="username" />
+        </div>
 
-      <!-- Zone -->
-      <div style="margin-bottom: 22px;">
-        <label style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-          Your Zone</label>
-        <select id="staff-zone" style="width:100%;">
-          ${ZONES.map(z => `<option value="${z.id}">${z.label}</option>`).join('')}
-        </select>
-      </div>
+        <!-- Password -->
+        <div style="margin-bottom: 14px;">
+          <label for="staff-pass" style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+            Password</label>
+          <input type="password" id="staff-pass" name="password"
+            placeholder="••••••••"
+            style="width:100%;" autocomplete="current-password" />
+        </div>
 
-      <!-- Submit -->
-      <button id="staff-login-btn" class="btn-primary"
-        style="background: var(--orange); color: #fff;">
-        Sign In
-      </button>
+        <!-- Zone -->
+        <div style="margin-bottom: 22px;">
+          <label for="staff-zone" style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+            Your Zone</label>
+          <select id="staff-zone" name="zone" style="width:100%;">
+            ${ZONES.map(z => `<option value="${z.id}">${z.label}</option>`).join('')}
+          </select>
+        </div>
+
+        <!-- Submit -->
+        <button id="staff-login-btn" type="submit" class="btn-primary"
+          aria-label="Sign in to staff panel"
+          style="background: var(--orange); color: #fff;">
+          Sign In
+        </button>
+
+      </form>
 
       <!-- Demo hint -->
       <div style="

@@ -66,12 +66,12 @@
         disableDefaultUI: true,
         backgroundColor: '#060A10'
       });
+      // Polyline for route rendering — google.maps.Polyline is still current API
       window.efRoutePolyline = new google.maps.Polyline({
         path: [],
         geodesic: true,
-        strokeColor: '#4A90E2',
-        strokeOpacity: 0.8,
-        strokeWeight: 6,
+        strokeColor: '#FFD700',
+        strokeOpacity: 0.9,
         strokeWeight: 6,
         map: window.efMap
       });
@@ -497,11 +497,12 @@
         console.log("Density Updated:", zoneDensityMap);
         
         try {
-          window.calculateBestRoute(); // Re-route alias
+          window.calculateBestRoute(); // Re-route on density change
         } catch(e) {
           console.error("calculateBestRoute failed:", e);
         }
-        refreshRoutes();
+        // Only refresh zone overlays if map is already ready
+        if (window.efMap) refreshRoutes();
       });
 
       listenEmergency(state => {

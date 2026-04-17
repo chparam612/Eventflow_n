@@ -31,26 +31,32 @@ export function render() {
 
       <div id="ctrl-login-error" class="error-msg" style="margin-bottom: 16px;"></div>
 
-      <div style="margin-bottom: 14px;">
-        <label style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-          Control Email</label>
-        <input type="email" id="ctrl-email"
-          placeholder="control@eventflow.demo"
-          style="width:100%;" autocomplete="username" />
-      </div>
+      <form id="ctrl-login-form" action="#" onsubmit="return false;" autocomplete="on"
+        style="display:flex;flex-direction:column;gap:0;">
 
-      <div style="margin-bottom: 22px;">
-        <label style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
-          Password</label>
-        <input type="password" id="ctrl-pass"
-          placeholder="••••••••"
-          style="width:100%;" autocomplete="current-password" />
-      </div>
+        <div style="margin-bottom: 14px;">
+          <label for="ctrl-email" style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+            Control Email</label>
+          <input type="email" id="ctrl-email" name="email"
+            placeholder="control@eventflow.demo"
+            style="width:100%;" autocomplete="username" />
+        </div>
 
-      <button id="ctrl-login-btn" class="btn-primary"
-        style="background: var(--red); color: #fff;">
-        Access Control Room
-      </button>
+        <div style="margin-bottom: 22px;">
+          <label for="ctrl-pass" style="font-size: 0.82rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+            Password</label>
+          <input type="password" id="ctrl-pass" name="password"
+            placeholder="••••••••"
+            style="width:100%;" autocomplete="current-password" />
+        </div>
+
+        <button id="ctrl-login-btn" type="submit" class="btn-primary"
+          aria-label="Sign in to Control Room"
+          style="background: var(--red); color: #fff;">
+          Access Control Room
+        </button>
+
+      </form>
 
       <div style="
         margin-top: 18px; padding: 12px; border-radius: 10px;
