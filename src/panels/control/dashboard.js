@@ -39,6 +39,10 @@ let aiInterval = null;
 let nudgesSent = 0;
 let cleanupFirebase = [];
 
+/**
+ * Render control room dashboard markup.
+ * @returns {string}
+ */
 export function render() {
   return `
   <div style="min-height:100vh;background:var(--bg-deep);display:flex;flex-direction:column;">
@@ -420,6 +424,11 @@ export function render() {
   </div>`;
 }
 
+/**
+ * Initialize control dashboard interactions, listeners and live updates.
+ * @param {(path: string) => Promise<void>} navigate
+ * @returns {Promise<() => void>}
+ */
 export async function init(navigate) {
   // ── Auth guard ──
   const user = await getCurrentUser();
@@ -903,10 +912,8 @@ export async function init(navigate) {
     clearInterval(simInterval);
     simInterval = null;
 
-    const densities = await new Promise(res => {
-      const { getZoneDensity } = window._efSim || {};
-      import('/src/simulation.js').then(m => res(m.getZoneDensity()));
-    });
+    const { getZoneDensity: getLiveZoneDensity } = await import('/src/simulation.js');
+    const densities = getLiveZoneDensity();
     const predictions = calculatePredictions(densities);
     refreshLiveUI(densities, predictions);
     await Promise.all(Object.entries(densities).map(([id, d]) => writeZone(id, d, getZoneStatus(d))));
@@ -1001,7 +1008,7 @@ export async function init(navigate) {
       await pushInstruction(zone, msg, 'CONTROL');
       await pushNudge(zone, msg);
     } catch (error) {
-      console.error("Emergency activation error:", error);
+      console.warn("Emergency activation failed:", error);
     }
   });
 
@@ -1127,7 +1134,13 @@ export async function init(navigate) {
     document.removeEventListener('keydown', modalKeyHandler);
     if (simInterval) clearInterval(simInterval);
     if (aiInterval) clearInterval(aiInterval);
-    cleanupFirebase.forEach(fn => { try { fn(); } catch (e) {} });
+    cleanupFirebase.forEach(fn => {
+      try {
+        fn();
+      } catch (error) {
+        console.warn('[Control] Cleanup callback failed:', error);
+      }
+    });
     cleanupFirebase = [];
     zoneRectangles = {};
     mapInstance = null;

@@ -4,7 +4,7 @@
  */
 import {
   getZoneDensity, getZoneStatus, getStatusEmoji,
-  getRecommendedGate, getExitPlan, shouldShowNudge, getNudgeType, ZONES
+  getRecommendedGate, getExitPlan, getNudgeType, ZONES
 } from '/src/simulation.js';
 import { 
   saveAttendeeData, saveFeedback, listenZones, listenNudges, 
@@ -22,6 +22,10 @@ let answers = {};
 let currentDensities = {};
 let cleanupFns = [];
 let nudgeShown = false;
+
+function reportNonCriticalError(scope, error) {
+  console.warn(`[Attendee] ${scope} failed:`, error);
+}
 
 const INTAKE_QUESTIONS = [
   {
@@ -107,6 +111,10 @@ function zoneStrip(densities) {
 }
 
 // ─── RENDER ───────────────────────────────────────────────────────────────
+/**
+ * Render attendee panel container.
+ * @returns {string}
+ */
 export function render() {
   return `<div id="attendee-root" style="
     min-height:100vh;background:var(--bg-deep);
@@ -790,7 +798,11 @@ function attachScreenListeners(name) {
 
     document.getElementById('intake-done-btn')?.addEventListener('click', async () => {
       const uid = localStorage.getItem('ef_uid') || 'anon';
-      try { await saveAttendeeData(uid, { ...answers, completedAt: Date.now() }); } catch (e) {}
+      try {
+        await saveAttendeeData(uid, { ...answers, completedAt: Date.now() });
+      } catch (error) {
+        reportNonCriticalError('attendee profile save', error);
+      }
       intakeStep = 0;
       currentDensities = getZoneDensity();
       showScreen('plan');
@@ -887,7 +899,9 @@ function attachScreenListeners(name) {
           helpfulness: window._fbHelpVal || '',
           uid: localStorage.getItem('ef_uid') || 'anon'
         });
-      } catch (e) {}
+      } catch (error) {
+        reportNonCriticalError('feedback submission', error);
+      }
       showScreen('thanks');
     });
   }
@@ -980,6 +994,11 @@ function initDuringMap() {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
+/**
+ * Initialize attendee flow state, listeners, and map/chat widgets.
+ * @param {(path: string) => Promise<void>} navigate
+ * @returns {Promise<() => void>}
+ */
 export async function init(navigate) {
   const initStart = performance.now();
   // Silent anonymous authentication to establish Firebase database write permissions
@@ -1127,7 +1146,13 @@ export async function init(navigate) {
   pushPerformanceMetric('attendee_init_ms', Math.round(performance.now() - initStart), { panel: 'attendee' }).catch(() => {});
 
   return () => {
-    cleanupFns.forEach(fn => { try { fn(); } catch(e) {} });
+    cleanupFns.forEach(fn => {
+      try {
+        fn();
+      } catch (error) {
+        reportNonCriticalError('cleanup callback', error);
+      }
+    });
     cleanupFns = [];
     delete window._attBack;
     delete window._attScreen;

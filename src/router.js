@@ -16,6 +16,21 @@ const routes = {
 
 let currentUnmount = null;
 
+/**
+ * Best-effort panel cleanup wrapper.
+ * @param {string} scope
+ */
+function runUnmountSafely(scope) {
+  if (!currentUnmount) return;
+  try {
+    currentUnmount();
+  } catch (error) {
+    console.warn(`[Router] Cleanup failed (${scope}):`, error);
+  } finally {
+    currentUnmount = null;
+  }
+}
+
 function ensureMainLandmark(app) {
   if (!app) return;
   app.setAttribute('role', 'main');
@@ -35,12 +50,14 @@ function focusRouteHeading(app) {
 }
 
 // ─── Navigate ──────────────────────────────────────────────────────────────
+/**
+ * Navigate to a route and render its panel.
+ * @param {string} path
+ * @returns {Promise<void>}
+ */
 export async function navigate(path) {
   // Teardown current panel
-  if (currentUnmount) {
-    try { currentUnmount(); } catch (e) {}
-    currentUnmount = null;
-  }
+  runUnmountSafely('navigate');
   window.history.pushState({}, '', path);
   await renderRoute(path);
 }
@@ -160,7 +177,7 @@ async function renderRoute(path) {
     }, { route: path });
 
   } catch (e) {
-    console.error('[Router] Panel load failed:', e);
+    console.warn('[Router] Panel load failed:', e);
     app.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;
         justify-content:center;min-height:100vh;gap:16px;padding:2rem;">
@@ -178,10 +195,14 @@ async function renderRoute(path) {
 }
 
 // ─── Init Router ───────────────────────────────────────────────────────────
+/**
+ * Initialize SPA route handlers and render the initial route.
+ * @returns {void}
+ */
 export function initRouter() {
   void initGoogleServices('router');
   window.addEventListener('popstate', () => {
-    if (currentUnmount) { try { currentUnmount(); } catch (e) {} currentUnmount = null; }
+    runUnmountSafely('popstate');
     renderRoute(window.location.pathname);
   });
 
