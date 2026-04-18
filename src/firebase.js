@@ -35,6 +35,7 @@ const CLOUD_BACKEND_BASE = (typeof window !== 'undefined' && window.__EF_CLOUD_B
 let _cloudEndpointWarned = false;
 let _analytics = null;
 let _analyticsInitPromise = null;
+const MAX_ANALYTICS_SCOPE_LENGTH = 32;
 
 // ─── Write Guard — prevents infinite recursion loops ──────────────────────
 const _writing = new Set();
@@ -105,12 +106,15 @@ export async function initGoogleServices(scope = 'app') {
   _analyticsInitPromise = (async () => {
     if (typeof window === 'undefined') return { analyticsEnabled: false };
     try {
-      const analyticsSupported = await isSupported().catch(() => false);
+      const analyticsSupported = await isSupported().catch(error => {
+        console.warn('[Firebase] Analytics support check failed. Analytics will be disabled:', error?.message || error);
+        return false;
+      });
       if (!analyticsSupported) return { analyticsEnabled: false };
       _analytics = getAnalytics(app);
       try {
         firebaseLogEvent(_analytics, 'google_services_initialized', {
-          scope: String(scope || 'app').slice(0, 32)
+          scope: String(scope || 'app').slice(0, MAX_ANALYTICS_SCOPE_LENGTH)
         });
       } catch (_) {}
       return { analyticsEnabled: true };
@@ -128,7 +132,7 @@ export async function trackEvent(eventName, params = {}, context = {}) {
     ...context
   });
   try {
-    await initGoogleServices('track_event');
+    await initGoogleServices('trackEvent');
     if (_analytics) {
       firebaseLogEvent(_analytics, record.eventName, record.params);
     }

@@ -218,7 +218,7 @@ export async function init(navigate) {
 
   // ── Fan button ──
   document.getElementById('btn-fan')?.addEventListener('click', async () => {
-    void trackEvent('landing_role_selected', { role: 'attendee' }, { route: '/' });
+    void trackEvent('landing_role_selected', { role: 'fan' }, { route: '/' });
     const btn = document.getElementById('btn-fan');
     if (!btn) return;
     btn.disabled = true;
