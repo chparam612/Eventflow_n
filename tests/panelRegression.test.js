@@ -36,8 +36,14 @@ const attendeeSrc = readFileSync(attendeePath, 'utf8');
 const staffSrc = readFileSync(staffPath, 'utf8');
 
 test('Control dashboard imports emergency helpers used in activation flow', () => {
+  const emergencyImportMatch = controlSrc.match(
+    /import\s*\{([\s\S]*?)\}\s*from\s*['"]\/src\/emergencyEngine\.js['"]\s*;?/
+  );
+
   assert(
-    controlSrc.includes("import { calculateEvacuationRoutes, getEmergencyMessage } from '/src/emergencyEngine.js';"),
+    emergencyImportMatch &&
+      /\bcalculateEvacuationRoutes\b/.test(emergencyImportMatch[1]) &&
+      /\bgetEmergencyMessage\b/.test(emergencyImportMatch[1]),
     'Missing emergencyEngine imports for emergency activation helpers.'
   );
 });
