@@ -26,6 +26,14 @@ assertEqual(typeof sanitized.nested, 'string', 'object should be stringified');
 assertEqual(sanitized.empty, '', 'undefined should become empty string');
 console.log('  ✅ sanitizeTelemetryParams');
 
+const oversized = sanitizeTelemetryParams(
+  Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`k${i}`, i]))
+);
+assert(Object.keys(oversized).length <= 16, 'params should be capped to 16 keys');
+const longVal = sanitizeTelemetryParams({ text: 'x'.repeat(300) });
+assertEqual(longVal.text.length, 120, 'string values should be trimmed to 120 chars');
+console.log('  ✅ sanitizeTelemetryParams edge cases');
+
 const record = buildTelemetryRecord('control_nudge_sent', { zoneId: 'north' }, {
   source: 'unit-test',
   route: '/control',
@@ -42,11 +50,13 @@ console.log('  ✅ buildTelemetryRecord');
 assertEqual(toNumberSetting('120000', 1000, 1000, 300000), 120000, 'numeric parsing failed');
 assertEqual(toNumberSetting('invalid', 5000, 1000, 10000), 5000, 'fallback for invalid number failed');
 assertEqual(toNumberSetting('999999', 5000, 1000, 10000), 10000, 'max clamp failed');
+assertEqual(toNumberSetting('-200', 5000, 1000, 10000), 1000, 'min clamp failed');
 console.log('  ✅ toNumberSetting');
 
 assertEqual(toBooleanSetting('true', false), true, 'true string parse failed');
 assertEqual(toBooleanSetting('0', true), false, '0 string parse failed');
 assertEqual(toBooleanSetting('unknown', true), true, 'fallback parse failed');
+assertEqual(toBooleanSetting(' yes ', false), true, 'trimmed yes parse failed');
 console.log('  ✅ toBooleanSetting');
 
-console.log('Tests: 4 passed, 0 failed');
+console.log('Tests: 6 passed, 0 failed');
