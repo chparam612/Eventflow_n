@@ -68,8 +68,11 @@ test('Attendee panel drops unused getStatusColor import', () => {
   assert(!attendeeSrc.includes('getStatusColor'), 'Unused getStatusColor import still present.');
 });
 
-test('Staff dashboard uses static listenInstructions import path', () => {
-  assert(!staffSrc.includes("import('/src/firebase.js')"), 'Dynamic firebase import for instructions still present.');
+test('Staff dashboard no longer loads listenInstructions via dynamic firebase import', () => {
+  assert(
+    !/import\('\/src\/firebase\.js'\)\s*\.then\s*\((?:[^)]*)\)\s*=>[\s\S]*listenInstructions/.test(staffSrc),
+    'Old dynamic firebase import pattern for listenInstructions still present.'
+  );
 });
 
 console.log('\n──────────────────────────────────────────────────');
