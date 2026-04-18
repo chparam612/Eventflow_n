@@ -84,7 +84,7 @@
 <body>
 
   <button class="back-btn" onclick="window.history.back()" aria-label="Go back">←</button>
-  <div id="map" aria-label="Attendee navigation dashboard"></div>
+  <div id="map" role="region" aria-label="Attendee navigation dashboard"></div>
   
   <div class="panel">
     <!-- UI Controllers -->
@@ -100,7 +100,7 @@
     <h2>🧭 Your Route <span id="nav-eta" style="color:var(--green); font-size: 1rem;">-- min</span></h2>
     <div class="route-steps" id="nav-path" style="margin-bottom:12px;">Calculating best route...</div>
     
-    <div id="instructions-panel" style="margin-bottom:16px; font-size:0.9rem; color:var(--text-secondary); line-height:1.6; display:flex; flex-direction:column; gap:4px;"></div>
+    <div id="instructions-panel" role="status" aria-live="polite" aria-label="Route instructions updates" style="margin-bottom:16px; font-size:0.9rem; color:var(--text-secondary); line-height:1.6; display:flex; flex-direction:column; gap:4px;"></div>
 
     <div id="nav-suggestion" class="suggestion">
       <div style="font-family:'Space Grotesk',sans-serif; text-transform:uppercase; font-size:0.75rem; letter-spacing:0.05em; margin-bottom:4px;">Smart Suggestion</div>

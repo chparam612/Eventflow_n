@@ -48,7 +48,7 @@ export function render() {
         background: var(--bg-card);
         border: 1px solid rgba(0,196,154,0.25);
         border-radius: 16px; padding: 16px;"
-        aria-live="assertive" aria-label="Urgent instructions from control room" role="alert">
+        aria-live="polite" aria-label="Control room instructions" role="status">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
           <span style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
             color:#00C49A;text-transform:uppercase;">📡 Control Room</span>
@@ -171,13 +171,13 @@ export function render() {
     </style>
     
     <!-- Emergency Overlay (Hidden by default) -->
-    <div id="staff-emerg-overlay" style="
+    <div id="staff-emerg-overlay" role="alertdialog" aria-modal="true" aria-hidden="true" aria-labelledby="staff-emerg-title" aria-describedby="staff-emerg-msg" style="
       position:fixed;top:0;left:0;right:0;bottom:0;
       background:#060A10;z-index:1001;display:none;
       flex-direction:column;align-items:center;justify-content:center;
       padding:24px;text-align:center;">
       <div style="font-size:4rem;margin-bottom:20px;animation:emerg-pulse 1s infinite alternate;">🚨</div>
-      <h1 style="color:#FF4757;font-family:'Space Grotesk',sans-serif;margin:0 0 10px 0;">EMERGENCY ACTIVE</h1>
+      <h1 id="staff-emerg-title" style="color:#FF4757;font-family:'Space Grotesk',sans-serif;margin:0 0 10px 0;">EMERGENCY ACTIVE</h1>
       <p id="staff-emerg-msg" style="color:#fff;font-size:1.1rem;line-height:1.5;margin-bottom:30px;">
         Evacuate fans immediately!
       </p>
@@ -343,15 +343,24 @@ export async function init(navigate) {
   const emergMsg = document.getElementById('staff-emerg-msg');
   const unListenEmerg = listenEmergency((state) => {
     if (state.active && state.zone === zone) {
-      if (emergOverlay) emergOverlay.style.display = 'flex';
+      if (emergOverlay) {
+        emergOverlay.style.display = 'flex';
+        emergOverlay.setAttribute('aria-hidden', 'false');
+      }
       if (emergMsg) emergMsg.textContent = `🚨 ${state.type} detected in ${zoneName.toUpperCase()}. Redirect fans to nearest safe exit immediately.`;
     } else {
-      if (emergOverlay) emergOverlay.style.display = 'none';
+      if (emergOverlay) {
+        emergOverlay.style.display = 'none';
+        emergOverlay.setAttribute('aria-hidden', 'true');
+      }
     }
   });
 
   document.getElementById('staff-emerg-ack')?.addEventListener('click', async () => {
-    if (emergOverlay) emergOverlay.style.display = 'none';
+    if (emergOverlay) {
+      emergOverlay.style.display = 'none';
+      emergOverlay.setAttribute('aria-hidden', 'true');
+    }
     await pushInstruction(zone, `ACK: Evacuation started by staff ${uid.slice(0,5)}`, 'STAFF');
   });
 

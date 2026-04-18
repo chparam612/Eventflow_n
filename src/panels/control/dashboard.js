@@ -106,7 +106,7 @@ export function render() {
           font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
           color:var(--text-muted);text-transform:uppercase;margin-bottom:12px;">
           Staff Online</div>
-        <div id="staff-list" style="display:flex;flex-direction:column;gap:6px;">
+        <div id="staff-list" style="display:flex;flex-direction:column;gap:6px;" aria-live="polite" aria-label="Live staff status list">
           <div style="color:var(--text-muted);font-size:0.82rem;">Waiting for staff…</div>
         </div>
       </div>
@@ -276,7 +276,7 @@ export function render() {
             color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
             📡 Dispatch</div>
 
-          <select id="ctrl-zone-sel" style="width:100%;margin-bottom:8px;font-size:0.85rem;">
+          <select id="ctrl-zone-sel" aria-label="Select target zone for dispatch" style="width:100%;margin-bottom:8px;font-size:0.85rem;">
             ${Object.entries(ZONES).map(([id, z]) =>
               `<option value="${id}">${z.name}</option>`).join('')}
           </select>
@@ -297,7 +297,7 @@ export function render() {
             `).join('')}
           </div>
 
-          <textarea id="ctrl-instr-text" placeholder="Custom instruction…" style="
+          <textarea id="ctrl-instr-text" aria-label="Custom instruction message for dispatch" placeholder="Custom instruction…" style="
             width:100%;height:60px;resize:none;margin-bottom:8px;
             font-size:0.85rem;"></textarea>
 
@@ -381,10 +381,10 @@ export function render() {
     @keyframes emerg-pulse { from { opacity: 0.6; } to { opacity: 1; } }
   </style>
   
-  <div id="emerg-modal-overlay">
+  <div id="emerg-modal-overlay" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="emerg-modal-title" aria-describedby="emerg-modal-desc" tabindex="-1">
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:24px;width:320px;box-shadow:0 20px 40px rgba(0,0,0,0.4);">
-      <h3 style="margin-top:0;color:var(--red);display:flex;align-items:center;gap:10px;">🚨 Activate Emergency</h3>
-      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px;">This will block the selected zone and immediately alert all staff and attendees.</p>
+      <h3 id="emerg-modal-title" style="margin-top:0;color:var(--red);display:flex;align-items:center;gap:10px;">🚨 Activate Emergency</h3>
+      <p id="emerg-modal-desc" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px;">This will block the selected zone and immediately alert all staff and attendees.</p>
       
       <div style="margin-bottom:16px;">
         <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Type</label>
@@ -519,11 +519,13 @@ export async function init(navigate) {
       const zone = ZONES[s.zone]?.name || s.zone || 'Unknown';
       const ago = s.updatedAt ? Math.round((Date.now() - s.updatedAt) / 60000) : '?';
       return `
-        <div style="
+        <button type="button" style="
           background:var(--bg-card2);border:1px solid var(--border);
-          border-radius:10px;padding:10px 12px;cursor:pointer;transition:all 0.2s;"
-          onclick="document.getElementById('ctrl-zone-sel').value='${s.zone || 'north'}'"
-          title="Click to dispatch to ${zone}">
+          border-radius:10px;padding:10px 12px;cursor:pointer;transition:all 0.2s;
+          width:100%;text-align:left;" class="staff-row-select"
+          data-zone="${s.zone || 'north'}"
+          title="Click to dispatch to ${zone}"
+          aria-label="Select ${zone} for dispatch">
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="width:7px;height:7px;border-radius:50%;
               background:${color};display:inline-block;flex-shrink:0;"></span>
@@ -534,8 +536,14 @@ export async function init(navigate) {
                 ${s.status || 'offline'} · ${ago}m ago</div>
             </div>
           </div>
-        </div>`;
+        </button>`;
     }).join('');
+    el.querySelectorAll('.staff-row-select').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const zel = document.getElementById('ctrl-zone-sel');
+        if (zel) zel.value = btn.dataset.zone || 'north';
+      });
+    });
   }
 
   async function renderAIInsights(densities) {
@@ -932,6 +940,12 @@ export async function init(navigate) {
   // ── Emergency Actions ──
   const emergBtn = document.getElementById('ctrl-emergency-btn');
   const modal = document.getElementById('emerg-modal-overlay');
+  const setModalOpen = (open) => {
+    if (!modal) return;
+    modal.style.display = open ? 'flex' : 'none';
+    modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (open) modal.focus();
+  };
   
   emergBtn?.addEventListener('click', () => {
     if (currentEmergency.active) {
@@ -939,11 +953,11 @@ export async function init(navigate) {
         setEmergencyStatus(false);
       }
     } else {
-      modal.style.display = 'flex';
+      setModalOpen(true);
     }
   });
 
-  document.getElementById('emerg-cancel')?.addEventListener('click', () => modal.style.display = 'none');
+  document.getElementById('emerg-cancel')?.addEventListener('click', () => setModalOpen(false));
   
   document.getElementById('emerg-confirm')?.addEventListener('click', async () => {
     try { // TASK 8: Prevent UI Crash
@@ -951,7 +965,7 @@ export async function init(navigate) {
       const zone = document.getElementById('emerg-zone-sel').value;
       const name = ZONES[zone]?.name || zone;
       
-      modal.style.display = 'none';
+      setModalOpen(false);
       await setEmergencyStatus(true, type, zone);
       await invokeCloudWorkflow('/emergencyValidate', { type, zone, activatedBy: user.email });
       await pushAnalyticsEvent('emergency_activated', { type, zone, activatedBy: user.email });

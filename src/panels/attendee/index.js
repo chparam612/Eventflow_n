@@ -584,15 +584,16 @@ function renderExit() {
         font-size:1.2rem;font-weight:700;color:var(--text-primary);">Your Exit Plan 🚪</h1>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:8px;" id="exit-options">
+    <div style="display:flex;flex-direction:column;gap:8px;" id="exit-options" role="radiogroup" aria-label="Choose an exit route">
       ${options.map((opt, i) => {
         const s = getZoneStatus(opt.density);
         const isRec = i === 0 && opt.density < 0.7;
         return `
-          <div class="exit-opt" data-id="${opt.id}" style="
+          <button type="button" class="exit-opt" role="radio" aria-checked="${i === 0 ? 'true' : 'false'}" data-id="${opt.id}" style="
             background:${i === 0 ? 'rgba(0,196,154,0.05)' : 'var(--bg-card)'};
             border:${i === 0 ? '1px solid rgba(0,196,154,0.3)' : '1px solid var(--border)'};
-            border-radius:16px;padding:18px;cursor:pointer;transition:all 0.2s;">
+            border-radius:16px;padding:18px;cursor:pointer;transition:all 0.2s;
+            width:100%;text-align:left;">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;">
               <div style="flex:1;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -621,7 +622,7 @@ function renderExit() {
                 background:${i === 0 ? '#00C49A' : 'transparent'};margin-left:12px;
                 margin-top:2px;"></div>
             </div>
-          </div>`;
+          </button>`;
       }).join('')}
     </div>
 
@@ -837,11 +838,13 @@ function attachScreenListeners(name) {
         document.querySelectorAll('.exit-opt').forEach(o => {
           o.style.borderColor = 'var(--border)';
           o.style.background = 'var(--bg-card)';
+          o.setAttribute('aria-checked', 'false');
           const radio = o.querySelector('.exit-radio');
           if (radio) { radio.style.background = 'transparent'; radio.style.borderColor = 'rgba(255,255,255,0.15)'; }
         });
         opt.style.borderColor = 'rgba(0,196,154,0.4)';
         opt.style.background = 'rgba(0,196,154,0.04)';
+        opt.setAttribute('aria-checked', 'true');
         const radio = opt.querySelector('.exit-radio');
         if (radio) { radio.style.background = '#00C49A'; radio.style.borderColor = '#00C49A'; }
       });
@@ -1073,6 +1076,9 @@ export async function init(navigate) {
       if (!banner) {
         banner = document.createElement('div');
         banner.id = 'att-emerg-banner';
+        banner.setAttribute('role', 'alert');
+        banner.setAttribute('aria-live', 'assertive');
+        banner.setAttribute('aria-atomic', 'true');
         banner.style = `
           position:fixed; bottom:0; left:0; right:0; z-index:9999;
           background:#FF4757; color:#fff; padding:16px;
