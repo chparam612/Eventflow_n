@@ -21,7 +21,7 @@
         ".write": "auth != null && auth.token.email.matches(/.*control.*/)",
         "acked": {
           "$uid": {
-            ".write": "auth != null && auth.uid == $uid && root.child('staff/' + auth.uid + '/zone').val() == newData.parent().parent().child('zoneId').val()",
+            ".write": "auth != null && auth.uid == $uid && root.child('staff/' + auth.uid + '/zone').val() == root.child('instructions/' + $instructionId + '/zoneId').val()",
             ".validate": "newData.isNumber()"
           }
         }
@@ -64,7 +64,7 @@
     },
     "auditTrail": {
       "$entryId": {
-        ".write": "auth != null && newData.hasChildren(['action','actor','timestamp'])",
+        ".write": "auth != null && auth.token.email.matches(/.*control.*/) && newData.hasChildren(['action','actor','timestamp']) && newData.child('actor').isString()",
         ".read": "auth != null && auth.token.email.matches(/.*control.*/)"
       }
     }

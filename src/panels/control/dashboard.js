@@ -940,11 +940,30 @@ export async function init(navigate) {
   // ── Emergency Actions ──
   const emergBtn = document.getElementById('ctrl-emergency-btn');
   const modal = document.getElementById('emerg-modal-overlay');
+  let modalTriggerEl = null;
+  const modalKeyHandler = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setModalOpen(false);
+    }
+  };
   const setModalOpen = (open) => {
     if (!modal) return;
+    if (open) {
+      modalTriggerEl = document.activeElement;
+      document.addEventListener('keydown', modalKeyHandler);
+    } else {
+      document.removeEventListener('keydown', modalKeyHandler);
+    }
     modal.style.display = open ? 'flex' : 'none';
     modal.setAttribute('aria-hidden', open ? 'false' : 'true');
-    if (open) modal.focus();
+    if (open) {
+      const primary = document.getElementById('emerg-confirm');
+      (primary || modal).focus();
+    } else if (modalTriggerEl && typeof modalTriggerEl.focus === 'function') {
+      modalTriggerEl.focus();
+      modalTriggerEl = null;
+    }
   };
   
   emergBtn?.addEventListener('click', () => {
@@ -1105,6 +1124,7 @@ export async function init(navigate) {
 
   // ── Cleanup ──
   return () => {
+    document.removeEventListener('keydown', modalKeyHandler);
     if (simInterval) clearInterval(simInterval);
     if (aiInterval) clearInterval(aiInterval);
     cleanupFirebase.forEach(fn => { try { fn(); } catch (e) {} });

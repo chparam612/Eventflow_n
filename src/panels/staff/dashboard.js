@@ -205,7 +205,7 @@ export async function init(navigate) {
   let zoneStatus = 'clear';
   const reports = [];
   let cleanupInstructions = null;
-  let latestInstruction = null;
+  let emergReturnFocusEl = null;
 
   // ── Write initial Firebase status ──
   await writeStaffStatus(uid, zone, 'clear', true);
@@ -218,7 +218,6 @@ export async function init(navigate) {
     const ackBtn = document.getElementById('ack-btn');
     if (!textEl) return;
     if (latest) {
-      latestInstruction = latest;
       textEl.textContent = latest.message;
       textEl.style.color = 'var(--yellow)';
       ackBtn.style.display = 'inline-block';
@@ -236,7 +235,6 @@ export async function init(navigate) {
         ackBtn.disabled = false;
       }
     } else {
-      latestInstruction = null;
       textEl.textContent = 'No instructions — all clear ✓';
       textEl.style.color = 'var(--text-primary)';
       ackBtn.style.display = 'none';
@@ -288,14 +286,15 @@ export async function init(navigate) {
   document.getElementById('btn-crowded')?.addEventListener('click', () => setStatus('crowded'));
 
   // ── Quick report buttons ──
-  const addReport = (type) => {
+  const addReport = (type, messageOverride = '') => {
     const msgs = {
       overcrowding: '👥 Overcrowding reported',
       clear: '✅ Area confirmed clear',
       medical: '🚑 Medical assistance requested',
       other: '⚠️ Custom report sent'
     };
-    reports.unshift({ type, msg: msgs[type] || type, time: new Date().toLocaleTimeString() });
+    const msg = messageOverride || msgs[type] || type;
+    reports.unshift({ type, msg, time: new Date().toLocaleTimeString() });
     const el = document.getElementById('recent-reports');
     if (el) {
       el.innerHTML = reports.slice(0, 3).map(r => `
@@ -305,7 +304,7 @@ export async function init(navigate) {
           <span style="font-size:0.72rem;color:var(--text-muted);">${r.time}</span>
         </div>`).join('');
     }
-    pushStaffReport(uid, zone, type, msgs[type] || type).catch(() => {});
+    pushStaffReport(uid, zone, type, msg).catch(() => {});
   };
 
   document.querySelectorAll('.quick-report-btn').forEach(btn => {
@@ -326,8 +325,7 @@ export async function init(navigate) {
   document.getElementById('custom-report-send')?.addEventListener('click', () => {
     const txt = document.getElementById('custom-report-text')?.value?.trim();
     if (!txt) return;
-    addReport('other');
-    pushStaffReport(uid, zone, 'other', txt).catch(() => {});
+    addReport('other', txt);
     document.getElementById('custom-report-text').value = '';
     document.getElementById('custom-report-box').style.display = 'none';
   });
@@ -341,26 +339,31 @@ export async function init(navigate) {
   // ── Emergency Listener ──
   const emergOverlay = document.getElementById('staff-emerg-overlay');
   const emergMsg = document.getElementById('staff-emerg-msg');
+  const closeEmergencyOverlay = () => {
+    if (!emergOverlay) return;
+    emergOverlay.style.display = 'none';
+    emergOverlay.setAttribute('aria-hidden', 'true');
+    if (emergReturnFocusEl && typeof emergReturnFocusEl.focus === 'function') {
+      emergReturnFocusEl.focus();
+    }
+    emergReturnFocusEl = null;
+  };
   const unListenEmerg = listenEmergency((state) => {
     if (state.active && state.zone === zone) {
       if (emergOverlay) {
+        emergReturnFocusEl = document.activeElement;
         emergOverlay.style.display = 'flex';
         emergOverlay.setAttribute('aria-hidden', 'false');
+        document.getElementById('staff-emerg-ack')?.focus();
       }
       if (emergMsg) emergMsg.textContent = `🚨 ${state.type} detected in ${zoneName.toUpperCase()}. Redirect fans to nearest safe exit immediately.`;
     } else {
-      if (emergOverlay) {
-        emergOverlay.style.display = 'none';
-        emergOverlay.setAttribute('aria-hidden', 'true');
-      }
+      closeEmergencyOverlay();
     }
   });
 
   document.getElementById('staff-emerg-ack')?.addEventListener('click', async () => {
-    if (emergOverlay) {
-      emergOverlay.style.display = 'none';
-      emergOverlay.setAttribute('aria-hidden', 'true');
-    }
+    closeEmergencyOverlay();
     await pushInstruction(zone, `ACK: Evacuation started by staff ${uid.slice(0,5)}`, 'STAFF');
   });
 
