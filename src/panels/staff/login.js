@@ -2,6 +2,7 @@
  * EventFlow V2 — Staff Login Panel
  */
 import { loginWithEmail } from '/src/auth.js';
+import { trackEvent } from '/src/firebase.js';
 
 const ZONES = [
   { id: 'north',   label: 'North Stand' },
@@ -131,6 +132,7 @@ export async function init(navigate) {
     try {
       await loginWithEmail(email, pass);
       localStorage.setItem('ef_zone', zone);
+      void trackEvent('staff_login_success', { zone }, { route: '/staff-login', role: 'staff' });
       navigate('/staff');
     } catch (e) {
       showError(e.message);

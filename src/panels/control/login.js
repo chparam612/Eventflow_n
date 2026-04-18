@@ -2,6 +2,7 @@
  * EventFlow V2 — Control Room Login
  */
 import { loginWithEmail } from '/src/auth.js';
+import { trackEvent } from '/src/firebase.js';
 
 export function render() {
   return `
@@ -99,6 +100,7 @@ export async function init(navigate) {
 
     try {
       await loginWithEmail(email, pass);
+      void trackEvent('control_login_success', {}, { route: '/control-login', role: 'control' });
       navigate('/control');
     } catch (e) {
       showError(e.message);
