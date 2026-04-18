@@ -2,6 +2,7 @@
  * EventFlow V2 — Landing Page
  * Role selector: Fan / Staff / Control with language switcher
  */
+import { trackEvent } from '/src/firebase.js';
 
 const LANGS = [
   { code: 'en', label: 'EN' },
@@ -217,6 +218,7 @@ export async function init(navigate) {
 
   // ── Fan button ──
   document.getElementById('btn-fan')?.addEventListener('click', async () => {
+    void trackEvent('landing_role_selected', { role: 'attendee' }, { route: '/' });
     const btn = document.getElementById('btn-fan');
     if (!btn) return;
     btn.disabled = true;
@@ -228,11 +230,13 @@ export async function init(navigate) {
 
   // ── Staff button ──
   document.getElementById('btn-staff')?.addEventListener('click', () => {
+    void trackEvent('landing_role_selected', { role: 'staff' }, { route: '/' });
     navigate('/staff-login');
   });
 
   // ── Control button ──
   document.getElementById('btn-control')?.addEventListener('click', () => {
+    void trackEvent('landing_role_selected', { role: 'control' }, { route: '/' });
     navigate('/control-login');
   });
 

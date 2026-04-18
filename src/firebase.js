@@ -4,9 +4,15 @@
  */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import {
+  getAnalytics,
+  isSupported,
+  logEvent as firebaseLogEvent
+} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js';
+import {
   getDatabase, ref, set, push, onValue,
   query, orderByChild, equalTo, limitToLast, off
 } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+import { buildTelemetryRecord } from '/src/observability.js';
 
 // ─── Firebase Config ───────────────────────────────────────────────────────
 // Replace with your actual Firebase project config
@@ -27,6 +33,8 @@ export const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const CLOUD_BACKEND_BASE = (typeof window !== 'undefined' && window.__EF_CLOUD_BACKEND_BASE__) || '';
 let _cloudEndpointWarned = false;
+let _analytics = null;
+let _analyticsInitPromise = null;
 
 // ─── Write Guard — prevents infinite recursion loops ──────────────────────
 const _writing = new Set();
@@ -90,6 +98,48 @@ export async function pushAnalyticsEvent(type, payload = {}) {
 
 export async function pushPerformanceMetric(name, value, context = {}) {
   return pushAnalyticsEvent('performance_metric', { name, value, ...context });
+}
+
+export async function initGoogleServices(scope = 'app') {
+  if (_analyticsInitPromise) return _analyticsInitPromise;
+  _analyticsInitPromise = (async () => {
+    if (typeof window === 'undefined') return { analyticsEnabled: false };
+    try {
+      const analyticsSupported = await isSupported().catch(() => false);
+      if (!analyticsSupported) return { analyticsEnabled: false };
+      _analytics = getAnalytics(app);
+      try {
+        firebaseLogEvent(_analytics, 'google_services_initialized', {
+          scope: String(scope || 'app').slice(0, 32)
+        });
+      } catch (_) {}
+      return { analyticsEnabled: true };
+    } catch (error) {
+      console.warn('[Firebase] Analytics init failed:', error?.message || error);
+      return { analyticsEnabled: false };
+    }
+  })();
+  return _analyticsInitPromise;
+}
+
+export async function trackEvent(eventName, params = {}, context = {}) {
+  const record = buildTelemetryRecord(eventName, params, {
+    source: 'eventflow-web',
+    ...context
+  });
+  try {
+    await initGoogleServices('track_event');
+    if (_analytics) {
+      firebaseLogEvent(_analytics, record.eventName, record.params);
+    }
+  } catch (_) {}
+  await pushAnalyticsEvent(record.eventName, {
+    ...record.params,
+    route: record.route,
+    role: record.role,
+    uid: record.uid
+  });
+  return record;
 }
 
 export async function invokeCloudWorkflow(route, payload = {}) {
