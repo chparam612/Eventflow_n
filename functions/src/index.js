@@ -7,7 +7,8 @@ import * as logger from 'firebase-functions/logger';
 import {
   sanitizeTelemetryRecord,
   validateTelemetryRecord,
-  buildBigQueryRow
+  buildBigQueryRow,
+  resolveTelemetryExportPlan
 } from './telemetry.js';
 
 initializeApp();
@@ -37,6 +38,12 @@ function getBigQueryTable() {
   const table = String(process.env.BIGQUERY_TABLE || process.env.TELEMETRY_BQ_TABLE || '').trim();
   if (!dataset || !table) return null;
   return bq.dataset(dataset).table(table);
+}
+
+function hasBigQueryConfig() {
+  const dataset = String(process.env.BIGQUERY_DATASET || process.env.TELEMETRY_BQ_DATASET || '').trim();
+  const table = String(process.env.BIGQUERY_TABLE || process.env.TELEMETRY_BQ_TABLE || '').trim();
+  return Boolean(dataset && table);
 }
 
 async function insertBigQueryRow(row, eventId) {
@@ -89,6 +96,8 @@ export const ingestTelemetry = onCall(
     const eventId = randomUUID();
     const receivedAt = Date.now();
     const exportMode = getExportMode();
+    const exportPlan = resolveTelemetryExportPlan(exportMode, hasBigQueryConfig());
+    const diagnostics = [...exportPlan.warnings];
 
     const envelope = {
       schemaVersion: 'eventflow.telemetry.v1',
@@ -105,15 +114,24 @@ export const ingestTelemetry = onCall(
     ];
 
     const bqRow = buildBigQueryRow(cleanRecord, envelope);
-    const queueEnabled = exportMode === 'queue' || exportMode === 'hybrid';
-    const bigQueryEnabled = exportMode === 'bigquery' || exportMode === 'hybrid';
+    const queueEnabled = exportPlan.queueEnabled;
+    const bigQueryEnabled = exportPlan.bigQueryEnabled;
+
+    if (diagnostics.includes('bigquery_config_missing')) {
+      logger.warn('telemetry_bigquery_config_missing', {
+        eventId,
+        requestedMode: exportPlan.requestedMode,
+        effectiveMode: exportPlan.effectiveMode
+      });
+    }
 
     if (queueEnabled) {
       writes.push(
         db.ref('telemetryExportQueue').child(eventId).set({
           status: 'pending',
           createdAt: receivedAt,
-          mode: exportMode,
+          mode: exportPlan.effectiveMode,
+          requestedMode: exportPlan.requestedMode,
           row: bqRow
         })
       );
@@ -126,20 +144,23 @@ export const ingestTelemetry = onCall(
         await insertBigQueryRow(bqRow, eventId);
         bigQueryInserted = true;
       }
-      logger.info('telemetry_ingested', {
-        eventId,
-        eventName: cleanRecord.eventName,
-        route: cleanRecord.route,
-        authRole,
-        exportMode,
-        bigQueryInserted
-      });
+        logger.info('telemetry_ingested', {
+          eventId,
+          eventName: cleanRecord.eventName,
+          route: cleanRecord.route,
+          authRole,
+          requestedMode: exportPlan.requestedMode,
+          effectiveMode: exportPlan.effectiveMode,
+          bigQueryInserted
+        });
       return {
         ok: true,
         eventId,
-        exportMode,
+        requestedMode: exportPlan.requestedMode,
+        effectiveMode: exportPlan.effectiveMode,
         queuedForExport: queueEnabled,
         bigQueryInserted,
+        diagnostics,
         schemaVersion: envelope.schemaVersion
       };
     } catch (error) {

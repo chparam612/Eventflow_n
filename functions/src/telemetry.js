@@ -93,3 +93,29 @@ export function buildBigQueryRow(record = {}, envelope = {}) {
     nudgeEffectivenessProxy: Number.isFinite(densityPct) ? Math.max(0, 100 - densityPct) : 0
   };
 }
+
+export function resolveTelemetryExportPlan(modeInput, hasBigQueryConfig) {
+  const mode = String(modeInput || 'queue').toLowerCase();
+  const requestedMode = ['queue', 'bigquery', 'hybrid'].includes(mode) ? mode : 'queue';
+  let queueEnabled = requestedMode === 'queue' || requestedMode === 'hybrid';
+  let bigQueryEnabled = requestedMode === 'bigquery' || requestedMode === 'hybrid';
+  const warnings = [];
+
+  if (bigQueryEnabled && !hasBigQueryConfig) {
+    warnings.push('bigquery_config_missing');
+    queueEnabled = true;
+    bigQueryEnabled = false;
+  }
+
+  return {
+    requestedMode,
+    effectiveMode: bigQueryEnabled
+      ? requestedMode
+      : queueEnabled
+        ? 'queue'
+        : requestedMode,
+    queueEnabled,
+    bigQueryEnabled,
+    warnings
+  };
+}

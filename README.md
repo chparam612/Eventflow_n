@@ -191,11 +191,17 @@ Post-match → Star-rating feedback → data feeds next event improvements
 git clone https://github.com/chparam612/Eventflow_n.git
 cd Eventflow_n
 
-# Add your real API keys to:
-# - src/firebase.js     (Firebase config)
-# - public/index.html   (Google Maps key)
+# Install dependencies (required for tests/build tooling)
+npm install
 
-# Run dev server (no npm install needed)
+# Configure deployment/runtime env values:
+# - GEMINI_API_KEY
+# - VERTEX_PROJECT_ID
+# - VERTEX_LOCATION (optional, defaults to asia-south1)
+# - GOOGLE_MAPS_API_KEY
+# You can place these in .env or export as process environment vars.
+
+# Run dev server
 node server.js
 
 # Open
@@ -230,6 +236,11 @@ firebase login
 firebase deploy
 ```
 
+Build notes:
+- `build.js` reads keys from `.env` and process environment variables.
+- Missing values are printed as diagnostics (placeholder risk warning).
+- Set `STRICT_ENV_CHECK=true` to fail build when unresolved placeholders remain.
+
 ---
 
 ## 🔮 Future Roadmap
@@ -250,6 +261,7 @@ firebase deploy
   - `ingestedTelemetry/{eventId}` (canonical ingest record)
   - `telemetryExportQueue/{eventId}` (BigQuery-ready export queue row)
   - BigQuery row insert when `TELEMETRY_EXPORT_MODE=bigquery|hybrid` and table env vars are configured
+- If BigQuery mode is selected but dataset/table env vars are missing, ingest auto-falls back to queue mode and logs `telemetry_bigquery_config_missing`.
 - Remote Config keys in use:
   - `ai_insights_interval_ms`
   - `auto_alert_cooldown_ms`
