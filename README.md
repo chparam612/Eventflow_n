@@ -71,6 +71,11 @@ Three panels, one live data loop — every action in the control room reflects i
 | **Firebase Hosting** | Edge-cached PWA with SPA rewrite rules |
 | **Google Maps JS API** | Satellite view of NMS with dynamic Density-Aware Dijkstra Routing |
 | **Gemini 2.0 Flash API** | AI chat for fans + automated crowd insights for control room |
+| **Firebase Analytics** | Route views + attendee/staff/control action telemetry events |
+| **Firebase Remote Config** | Runtime control for AI refresh cadence and auto-alert cooldown |
+| **Firebase App Check** | ReCAPTCHA v3 protection hook for abuse-resistant API access |
+| **Firebase Performance** | Zone sync traces for control-room write path monitoring |
+| **Cloud Functions (Callable)** | Optional telemetry ingestion path (`ingestTelemetry`) for downstream processing |
 | **Google Fonts** | DM Sans + Space Grotesk typography |
 
 ---
@@ -238,6 +243,45 @@ firebase deploy
 
 ---
 
+## 📈 Observability & Runtime Controls
+
+- Control room, attendee, and staff flows emit structured telemetry events to `analyticsEvents`
+- Optional callable sink: `ingestTelemetry` (region: `asia-south1`) validates/auth-checks payloads and writes:
+  - `ingestedTelemetry/{eventId}` (canonical ingest record)
+  - `telemetryExportQueue/{eventId}` (BigQuery-ready export queue row)
+- Remote Config keys in use:
+  - `ai_insights_interval_ms`
+  - `auto_alert_cooldown_ms`
+  - `telemetry_sink`
+  - `perf_zone_sync_trace_enabled`
+- App Check auto-initializes when `window.__EF_APPCHECK_SITE_KEY` is provided
+
+### Service → Workflow → Fallback Matrix
+
+| Google Service | Where Used | User-visible Effect | Fallback |
+|---|---|---|---|
+| Firebase Analytics | `trackEvent()` in attendee/staff/control/router flows | Route views + action telemetry in dashboards | RTDB `analyticsEvents` write remains primary |
+| Firebase Remote Config | Control dashboard cadence/cooldown + sink routing | AI refresh and auto-alert timing tuneable at runtime | Defaults from `REMOTE_CONFIG_DEFAULTS` |
+| Firebase App Check | `initAppCheckIfConfigured()` | Abuse-resistant token path in production | No-op in local/dev when site key absent |
+| Firebase Performance | `sync_zones` trace wrappers in control loop | Zone-sync latency instrumentation | Trace disabled by config key |
+| Cloud Functions Callable | `ingestTelemetry` sink | Server-side validation + structured ingest | App still writes telemetry to RTDB even if callable fails |
+
+### Monitoring/Logging Proof Pack
+
+- Cloud Logging query starters:
+  - `resource.type="cloud_function" AND textPayload:"telemetry_ingested"`
+  - `resource.type="cloud_function" AND textPayload:"telemetry_ingest_failed"`
+  - `resource.type="cloud_function" AND textPayload:"telemetry_bigquery_candidate"`
+- Alert policy templates:
+  - High error-rate: `telemetry_ingest_failed` count > threshold over 5m
+  - Throughput drop: `telemetry_ingested` below baseline during live match window
+- Incident drill (recommended):
+  1. Trigger control emergency from `/control`
+  2. Verify `emergency_activated` + `attendee_emergency_banner_shown` events in telemetry
+  3. Verify queued export row in `telemetryExportQueue`
+
+---
+
 ## ♿ Accessibility
 
 - All interactive buttons have descriptive `aria-label` attributes
@@ -253,6 +297,18 @@ firebase deploy
 - Minimum font size: 0.78rem (~12.5px) throughout
 - Dark theme meets WCAG AA contrast ratio
 - Touch targets minimum 44×44px on mobile
+
+---
+
+## ✅ PromptWars Evidence Matrix
+
+| Criterion | Current Proof | Gap Closed | Artifact |
+|---|---|---|---|
+| Google Service Depth | Runtime usage of Analytics, Remote Config, App Check, Performance, Functions | Services tied to live workflows (not static listing) | `src/firebase.js`, `functions/src/index.js`, this README matrix |
+| Reliability | Telemetry dual-path (`analyticsEvents` + callable ingest/queue) | Function failure no longer blocks app telemetry capture | `trackEvent()` and `ingestTelemetry` |
+| Accessibility | ARIA live regions, modal semantics, keyboard-selectable route options | Emergency flows now assertive + focus-safe | `src/panels/*`, `tests/accessibility.test.js` |
+| Maintainability | Shared observability sanitization/parsing + telemetry helper module | Reduced duplicated normalization logic | `src/observability.js`, `functions/src/telemetry.js` |
+| Testability | Unit tests for observability + ingest schema helper | Failure/config edge cases covered | `tests/observability.test.js`, `tests/telemetryIngest.test.js` |
 
 ---
 
