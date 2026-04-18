@@ -55,6 +55,7 @@ function injectKeys() {
 
   replaceInFile('public/src/firebase.js', 'YOUR_API_KEY', keys.FIREBASE_API_KEY);
   replaceInFile('public/src/gemini.js', 'YOUR_GEMINI_KEY_HERE', keys.GEMINI_API_KEY);
+  replaceInFile('public/src/gemini.js', 'YOUR_VERTEX_PROJECT_ID', keys.VERTEX_PROJECT_ID);
   replaceInFile('public/index.html', 'YOUR_MAPS_KEY_HERE', keys.GOOGLE_MAPS_API_KEY);
   replaceInFile('public/attendee-navigation.html', 'YOUR_MAPS_KEY_HERE', keys.GOOGLE_MAPS_API_KEY);
 }
