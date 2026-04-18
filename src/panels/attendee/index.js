@@ -1095,14 +1095,14 @@ export async function init(navigate) {
   const unEmerg = listenEmergency((state) => {
     lastEmergency = state;
     let banner = document.getElementById('att-emerg-banner');
-      if (state.active) {
-        if (!banner) {
-          banner = document.createElement('div');
-          banner.id = 'att-emerg-banner';
-          banner.setAttribute('role', 'alert');
-          banner.setAttribute('aria-live', 'assertive');
-          banner.setAttribute('aria-atomic', 'true');
-          banner.style = `
+    if (state.active) {
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'att-emerg-banner';
+        banner.setAttribute('role', 'alert');
+        banner.setAttribute('aria-live', 'assertive');
+        banner.setAttribute('aria-atomic', 'true');
+        banner.style = `
           position:fixed; bottom:0; left:0; right:0; z-index:9999;
           background:#FF4757; color:#fff; padding:16px;
           border-top:2px solid rgba(255,255,255,0.3);
@@ -1112,7 +1112,7 @@ export async function init(navigate) {
         `;
         document.body.appendChild(banner);
       }
-        banner.innerHTML = `
+      banner.innerHTML = `
         <div style="display:flex;align-items:center;gap:12px;">
           <span style="font-size:1.5rem;">🚨</span>
           <div style="flex:1;">
@@ -1126,16 +1126,16 @@ export async function init(navigate) {
           VIEW SAFE EXIT ROUTE →
         </button>
         `;
-        void trackEvent('attendee_emergency_banner_shown', {
-          zoneId: state.zone || 'unknown',
-          type: state.type || 'unknown'
-        }, { route: '/attendee' });
-        document.getElementById('att-safe-exit-btn')?.addEventListener('click', () => {
-          announce('Opening safe exit options', 'assertive');
-          void trackEvent('attendee_safe_exit_opened', {}, { route: '/attendee' });
-          showScreen('exit');
-        });
-      } else {
+      void trackEvent('attendee_emergency_banner_shown', {
+        zoneId: state.zone || 'unknown',
+        type: state.type || 'unknown'
+      }, { route: '/attendee' });
+      document.getElementById('att-safe-exit-btn')?.addEventListener('click', () => {
+        announce('Opening safe exit options', 'assertive');
+        void trackEvent('attendee_safe_exit_opened', {}, { route: '/attendee' });
+        showScreen('exit');
+      });
+    } else {
       if (banner) banner.remove();
     }
     updateSafeExitUI();

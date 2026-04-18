@@ -170,7 +170,7 @@ export function render() {
     
     <!-- Emergency Overlay (Hidden by default) -->
     <div id="staff-emerg-overlay" role="alertdialog" aria-modal="true" aria-live="assertive" aria-atomic="true"
-      aria-labelledby="staff-emerg-title" aria-describedby="staff-emerg-msg" tabindex="-1" style="
+      aria-labelledby="staff-emerg-title" aria-describedby="staff-emerg-msg" style="
       position:fixed;top:0;left:0;right:0;bottom:0;
       background:#060A10;z-index:1001;display:none;
       flex-direction:column;align-items:center;justify-content:center;
