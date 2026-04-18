@@ -5,28 +5,30 @@
 
 import { zoneGraph as graph } from './zoneGraph.js';
 
+const DEFAULT_CAPACITY = 10000;
+const ALT_EDGE_PENALTY = 50;
+const EPSILON = 1e-9;
+
 // STEP 1 — CREATE DENSITY STORE
 export let zoneDensityMap = {};
 
 export function updateDensityMap(densities) {
+  if (!densities || typeof densities !== 'object') return;
+
+  const next = { ...zoneDensityMap };
   Object.keys(densities).forEach(id => {
-    // Expected density is provided directly or converted to 0-100 scale.
-    // If the simulation backend defines density as 0.0-1.0, convert to 0-100%
-    const d = densities[id];
-    zoneDensityMap[id] = d <= 1.0 ? d * 100 : d; // Handle both 0.9 and 90 seamlessly
+    const raw = densities[id];
+    const value = typeof raw === 'number'
+      ? raw
+      : (raw && typeof raw.density === 'number' ? raw.density : 0);
+    next[id] = normalizeDensity(value);
   });
+  zoneDensityMap = next;
 }
 
 // STEP 3 — CREATE DYNAMIC COST FUNCTION
-export function getDynamicWeight(zoneId, baseDistance) {
-  const density = zoneDensityMap[zoneId] || 0;
-
-  console.log(
-    "Weight calc:",
-    zoneId,
-    density
-  );
-
+export function getDynamicWeight(zoneId, baseDistance, densities = zoneDensityMap) {
+  const density = densities[zoneId] || 0;
   if (density < 50) {
     return baseDistance;
   }
@@ -40,20 +42,137 @@ export function getDynamicWeight(zoneId, baseDistance) {
 }
 
 // STEP 4 — CREATE ROUTE CACHE
-let routeCache = {};
+let routeCache = new Map();
+
+const undirectedGraph = buildUndirectedGraph(graph);
 
 export function clearRouteCache() {
-  routeCache = {};
+  routeCache = new Map();
 }
 
-// Helper to hash densities for cache verification
-function hashState(startZone, zones) {
-  let hash = `${startZone}_`;
-  for (const z of zones) {
-    hash += `${z.id}:${z.currentFans || 0}:${z.blocked || false}_`;
+function normalizeDensity(value) {
+  const numeric = Number.isFinite(value) ? value : 0;
+  if (numeric <= 1 && numeric >= 0) return numeric * 100;
+  return Math.min(100, Math.max(0, numeric));
+}
+
+function buildUndirectedGraph(sourceGraph) {
+  const merged = {};
+
+  Object.keys(sourceGraph).forEach(node => {
+    if (!merged[node]) merged[node] = [];
+    const edges = Array.isArray(sourceGraph[node]) ? sourceGraph[node] : [];
+    edges.forEach(edge => {
+      if (!edge || !edge.node || !Number.isFinite(edge.distance) || edge.distance <= 0) return;
+
+      if (!merged[edge.node]) merged[edge.node] = [];
+
+      if (!merged[node].some(e => e.node === edge.node)) {
+        merged[node].push({ node: edge.node, distance: edge.distance });
+      }
+
+      if (!merged[edge.node].some(e => e.node === node)) {
+        merged[edge.node].push({ node, distance: edge.distance });
+      }
+    });
+  });
+
+  return merged;
+}
+
+function buildZoneContext(zones) {
+  const zoneDataMap = {};
+  const densities = { ...zoneDensityMap };
+  const blocked = new Set();
+
+  for (const zone of zones) {
+    if (!zone || !zone.id) continue;
+    zoneDataMap[zone.id] = zone;
+
+    if (zone.blocked) blocked.add(zone.id);
+
+    const capacity = Number.isFinite(zone.capacity) && zone.capacity > 0
+      ? zone.capacity
+      : DEFAULT_CAPACITY;
+    const currentFans = Number.isFinite(zone.currentFans) ? zone.currentFans : 0;
+    const percent = (currentFans / capacity) * 100;
+    densities[zone.id] = normalizeDensity(percent);
   }
-  hash += Object.keys(zoneDensityMap).map(k => `${k}:${zoneDensityMap[k]}`).join('_');
-  return hash;
+
+  return { zoneDataMap, densities, blocked };
+}
+
+function hashState(startZone, destinationZone, penalties, blockedSet, densities) {
+  const penaltyState = Object.keys(penalties)
+    .sort()
+    .map(key => `${key}->${penalties[key]}`)
+    .join('|');
+
+  const blockedState = Array.from(blockedSet).sort().join('|');
+  const densityState = Object.keys(densities)
+    .sort()
+    .map(key => `${key}:${Math.round(densities[key] * 100) / 100}`)
+    .join('|');
+
+  return `${startZone}|${destinationZone}|${penaltyState}|${blockedState}|${densityState}`;
+}
+
+class MinPriorityQueue {
+  constructor() {
+    this.heap = [];
+  }
+
+  push(node, priority) {
+    this.heap.push({ node, priority });
+    this.bubbleUp(this.heap.length - 1);
+  }
+
+  pop() {
+    if (this.heap.length === 0) return null;
+    const top = this.heap[0];
+    const last = this.heap.pop();
+    if (this.heap.length > 0 && last) {
+      this.heap[0] = last;
+      this.bubbleDown(0);
+    }
+    return top;
+  }
+
+  get size() {
+    return this.heap.length;
+  }
+
+  bubbleUp(index) {
+    let i = index;
+    while (i > 0) {
+      const parent = Math.floor((i - 1) / 2);
+      if (this.heap[parent].priority <= this.heap[i].priority) break;
+      [this.heap[parent], this.heap[i]] = [this.heap[i], this.heap[parent]];
+      i = parent;
+    }
+  }
+
+  bubbleDown(index) {
+    let i = index;
+    const length = this.heap.length;
+
+    while (true) {
+      const left = (2 * i) + 1;
+      const right = left + 1;
+      let smallest = i;
+
+      if (left < length && this.heap[left].priority < this.heap[smallest].priority) {
+        smallest = left;
+      }
+      if (right < length && this.heap[right].priority < this.heap[smallest].priority) {
+        smallest = right;
+      }
+      if (smallest === i) break;
+
+      [this.heap[i], this.heap[smallest]] = [this.heap[smallest], this.heap[i]];
+      i = smallest;
+    }
+  }
 }
 
 /**
@@ -66,93 +185,75 @@ function hashState(startZone, zones) {
  * @returns {Object} { path: [], totalCost: number }
  */
 export function findBestRoute(startZone, destinationZone, zones = [], penalties = {}) {
-  // 1. Build an undirected graph dynamically for bidirectional support
-  const undirectedGraph = {};
-  Object.keys(graph).forEach(node => { undirectedGraph[node] = []; });
-  Object.keys(graph).forEach(node => {
-    graph[node].forEach(edge => {
-      // Add forward edge
-      if (!undirectedGraph[node].find(e => e.node === edge.node)) {
-        undirectedGraph[node].push(edge);
-      }
-      // Add reverse edge
-      if (!undirectedGraph[edge.node]) undirectedGraph[edge.node] = [];
-      if (!undirectedGraph[edge.node].find(e => e.node === node)) {
-        undirectedGraph[edge.node].push({ node, distance: edge.distance });
-      }
-    });
-  });
+  if (!startZone || !destinationZone) {
+    return { path: [], totalCost: Infinity };
+  }
 
-  if (!undirectedGraph[startZone] || !undirectedGraph[destinationZone]) {
+  if (startZone === destinationZone) {
     return { path: [startZone], totalCost: 0 };
   }
 
-  const zoneDataMap = {};
-  for (const z of zones) {
-    zoneDataMap[z.id] = z;
+  if (!undirectedGraph[startZone] || !undirectedGraph[destinationZone]) {
+    return { path: [], totalCost: Infinity };
   }
 
-  // Dijkstra init
+  const { densities, blocked } = buildZoneContext(zones);
+  if (blocked.has(startZone) || blocked.has(destinationZone)) {
+    return { path: [], totalCost: Infinity };
+  }
+
+  zoneDensityMap = densities;
+
+  const cacheKey = hashState(startZone, destinationZone, penalties, blocked, densities);
+  const cached = routeCache.get(cacheKey);
+  if (cached) return cached;
+
   const distances = {};
   const previous = {};
-  const unvisited = new Set(Object.keys(undirectedGraph));
+  const visited = new Set();
+  const queue = new MinPriorityQueue();
 
-  for (const node of unvisited) {
+  Object.keys(undirectedGraph).forEach(node => {
     distances[node] = Infinity;
     previous[node] = null;
-  }
+  });
   distances[startZone] = 0;
+  queue.push(startZone, 0);
 
-  while (unvisited.size > 0) {
-    let current = null;
-    let minDistance = Infinity;
-    
-    for (const node of unvisited) {
-      if (distances[node] < minDistance) {
-        minDistance = distances[node];
-        current = node;
-      }
-    }
-
-    if (current === null || current === destinationZone || minDistance === Infinity) break;
-
-    unvisited.delete(current);
+  while (queue.size > 0) {
+    const currentEntry = queue.pop();
+    if (!currentEntry) break;
+    const { node: current, priority: currentDistance } = currentEntry;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    if (current === destinationZone) break;
+    if (currentDistance - distances[current] > EPSILON) continue;
 
     const neighbors = undirectedGraph[current] || [];
     for (const neighbor of neighbors) {
-      if (!unvisited.has(neighbor.node)) continue;
+      if (visited.has(neighbor.node)) continue;
+      if (blocked.has(neighbor.node)) continue;
 
-      const neighborZone = zoneDataMap[neighbor.node];
-      if (neighborZone && neighborZone.blocked) continue;
-
-      if (!zoneDensityMap[neighbor.node]) {
-        const capacity = neighborZone && neighborZone.capacity ? neighborZone.capacity : 10000;
-        const currentFans = neighborZone && neighborZone.currentFans ? neighborZone.currentFans : 0;
-        zoneDensityMap[neighbor.node] = (currentFans / capacity) * 100;
-      }
-
-      // Density dynamic weight
-      let stepCost = getDynamicWeight(neighbor.node, neighbor.distance);
-      
-      // Inject Alternate Route Penalties
+      let stepCost = getDynamicWeight(neighbor.node, neighbor.distance, densities);
       if (penalties[current] === neighbor.node || penalties[neighbor.node] === current) {
-         stepCost += 50; // Mass penalty to enforce alternate routing
+        stepCost += ALT_EDGE_PENALTY;
       }
-      
-      const alternativeDistance = distances[current] + stepCost;
 
+      const alternativeDistance = distances[current] + stepCost;
       if (alternativeDistance < distances[neighbor.node]) {
         distances[neighbor.node] = alternativeDistance;
         previous[neighbor.node] = current;
+        queue.push(neighbor.node, alternativeDistance);
       }
     }
   }
 
   if (distances[destinationZone] === Infinity) {
-    return { path: [startZone], totalCost: 0 };
+    const noPath = { path: [], totalCost: Infinity };
+    routeCache.set(cacheKey, noPath);
+    return noPath;
   }
 
-  // Reconstruct path
   const path = [];
   let currentWalk = destinationZone;
   while (currentWalk !== null) {
@@ -160,7 +261,9 @@ export function findBestRoute(startZone, destinationZone, zones = [], penalties 
     currentWalk = previous[currentWalk];
   }
 
-  return { path, totalCost: distances[destinationZone] };
+  const result = { path, totalCost: distances[destinationZone] };
+  routeCache.set(cacheKey, result);
+  return result;
 }
 
 // STEP 4 — ADD ALTERNATE ROUTE ENGINE
@@ -180,4 +283,3 @@ export function findAlternatePath(startZone, destinationZone, bestPath, zones = 
 
   return altResult;
 }
-
