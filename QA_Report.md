@@ -26,6 +26,13 @@ To ensure EventFlow V2 serves all fans regardless of ability, the interface was 
 - **Semantic ARIA Labels [ADDED]**: Key interactive components, including the "Go back" button and the Google Maps satellite iframe, contain explicit `aria-label` tags for screen readers.
 - **Redundant Encoding**: Status indicators never rely purely on color. High-density zones are marked with both a color (Red) and a text indicator ("CROWDED" / 🔴 / %).
 - **Touch Targets**: All mobile buttons in the Attendee PWA meet the minimum 44x44px touch target requirement.
+- **Automated Axe Smoke Audit [ADDED]**: `tests/accessibility.test.js` now runs `axe-core` checks against core screens (landing, attendee shell, staff/control login + dashboards, and public HTML pages) and fails on serious/critical violations.
+
+### Keyboard-Only Smoke Checklist [ADDED]
+- [ ] Tab from landing through language and role controls with visible focus states.
+- [ ] Open and close control emergency dialog via keyboard (Enter/Escape) and verify focus returns to trigger.
+- [ ] Navigate attendee exit options using arrow keys and Enter/Space selection.
+- [ ] Trigger staff/control login validation errors and verify screen-reader alert announcement.
 
 ---
 

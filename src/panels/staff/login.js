@@ -41,7 +41,7 @@ export function render() {
       border-radius: 20px; padding: 24px; width: 100%; max-width: 380px;">
 
       <!-- Error -->
-      <div id="staff-login-error" class="error-msg" style="margin-bottom: 16px;"></div>
+      <div id="staff-login-error" class="error-msg" role="alert" aria-live="assertive" aria-atomic="true" style="margin-bottom: 16px;"></div>
 
       <form id="staff-login-form" action="#" onsubmit="return false;" autocomplete="on"
         style="display:flex;flex-direction:column;gap:0;">

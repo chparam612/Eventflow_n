@@ -14,6 +14,7 @@ import { renderAIChat, initAIChat } from './aiChat.js';
 import { rankBestExit } from '/src/evacuationEngine.js';
 import { calculateAverageDensity } from '/src/analyticsEngine.js';
 import { loginAnonymously } from '/src/auth.js';
+import { makeSelectableList, announce } from '/src/a11y.js';
 
 // ─── State ────────────────────────────────────────────────────────────────
 let screen = 'intake';
@@ -22,6 +23,8 @@ let answers = {};
 let currentDensities = {};
 let cleanupFns = [];
 let nudgeShown = false;
+const DEFAULT_EXIT_ID = 'now';
+let selectedExitId = DEFAULT_EXIT_ID;
 
 const INTAKE_QUESTIONS = [
   {
@@ -113,6 +116,20 @@ export function render() {
     display:flex;flex-direction:column;max-width:480px;margin:0 auto;">
     <div id="attendee-screen"></div>
     ${renderAIChat()}
+    <style>
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+      .exit-opt:focus-visible {
+        outline: 2px solid #00C49A;
+        outline-offset: 2px;
+      }
+    </style>
   </div>`;
 }
 
@@ -570,7 +587,7 @@ function renderDuring() {
 function renderExit() {
   const section = getSectionFromAnswers();
   const options = getExitPlan(section, answers.transport, currentDensities);
-  let selected = 'now';
+  const selected = options.some(o => o.id === selectedExitId) ? selectedExitId : options[0]?.id || DEFAULT_EXIT_ID;
 
   return `
   <div class="fade-in" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
@@ -584,14 +601,16 @@ function renderExit() {
         font-size:1.2rem;font-weight:700;color:var(--text-primary);">Your Exit Plan 🚪</h1>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:8px;" id="exit-options">
+    <div style="display:flex;flex-direction:column;gap:8px;" id="exit-options" role="radiogroup" aria-label="Choose an exit route">
       ${options.map((opt, i) => {
+        const isSelected = opt.id === selected;
         const s = getZoneStatus(opt.density);
         const isRec = i === 0 && opt.density < 0.7;
         return `
-          <div class="exit-opt" data-id="${opt.id}" style="
-            background:${i === 0 ? 'rgba(0,196,154,0.05)' : 'var(--bg-card)'};
-            border:${i === 0 ? '1px solid rgba(0,196,154,0.3)' : '1px solid var(--border)'};
+          <button type="button" class="exit-opt" data-id="${opt.id}" role="radio" aria-checked="${isSelected ? 'true' : 'false'}" data-selected="${isSelected ? 'true' : 'false'}" style="
+            width:100%;text-align:left;
+            background:${isSelected ? 'rgba(0,196,154,0.05)' : 'var(--bg-card)'};
+            border:${isSelected ? '1px solid rgba(0,196,154,0.3)' : '1px solid var(--border)'};
             border-radius:16px;padding:18px;cursor:pointer;transition:all 0.2s;">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;">
               <div style="flex:1;">
@@ -617,11 +636,11 @@ function renderExit() {
               </div>
               <div class="exit-radio" data-id="${opt.id}" style="
                 width:20px;height:20px;border-radius:50%;flex-shrink:0;
-                border:2px solid ${i === 0 ? '#00C49A' : 'rgba(255,255,255,0.15)'};
-                background:${i === 0 ? '#00C49A' : 'transparent'};margin-left:12px;
+                border:2px solid ${isSelected ? '#00C49A' : 'rgba(255,255,255,0.15)'};
+                background:${isSelected ? '#00C49A' : 'transparent'};margin-left:12px;
                 margin-top:2px;"></div>
             </div>
-          </div>`;
+          </button>`;
       }).join('')}
     </div>
 
@@ -830,22 +849,28 @@ function attachScreenListeners(name) {
   }
 
   if (name === 'exit') {
-    // Select radio
-    document.querySelectorAll('.exit-opt').forEach(opt => {
-      opt.addEventListener('click', () => {
-        const id = opt.dataset.id;
+    const exitOptions = document.getElementById('exit-options');
+    makeSelectableList({
+      container: exitOptions,
+      itemSelector: '.exit-opt',
+      getValue: (el) => el?.dataset?.id,
+      onSelect: (selectedEl, value) => {
+        selectedExitId = value || selectedExitId;
         document.querySelectorAll('.exit-opt').forEach(o => {
-          o.style.borderColor = 'var(--border)';
-          o.style.background = 'var(--bg-card)';
+          const active = o === selectedEl;
+          o.style.borderColor = active ? 'rgba(0,196,154,0.4)' : 'var(--border)';
+          o.style.background = active ? 'rgba(0,196,154,0.04)' : 'var(--bg-card)';
+          o.setAttribute('aria-checked', active ? 'true' : 'false');
           const radio = o.querySelector('.exit-radio');
-          if (radio) { radio.style.background = 'transparent'; radio.style.borderColor = 'rgba(255,255,255,0.15)'; }
+          if (radio) {
+            radio.style.background = active ? '#00C49A' : 'transparent';
+            radio.style.borderColor = active ? '#00C49A' : 'rgba(255,255,255,0.15)';
+          }
         });
-        opt.style.borderColor = 'rgba(0,196,154,0.4)';
-        opt.style.background = 'rgba(0,196,154,0.04)';
-        const radio = opt.querySelector('.exit-radio');
-        if (radio) { radio.style.background = '#00C49A'; radio.style.borderColor = '#00C49A'; }
-      });
+      },
+      initialSelectedValue: selectedExitId
     });
+
     document.getElementById('exit-start-btn')?.addEventListener('click', () => showScreen('escort-exit'));
   }
 
@@ -993,6 +1018,7 @@ export async function init(navigate) {
 
   // Reset state
   screen = 'intake'; intakeStep = 0; answers = {}; currentDensities = {}; nudgeShown = false;
+  selectedExitId = DEFAULT_EXIT_ID;
 
   // Global nav helpers
   window._attBack = () => {
@@ -1085,6 +1111,7 @@ export async function init(navigate) {
         </button>
       `;
       document.getElementById('att-safe-exit-btn')?.addEventListener('click', () => {
+        announce('Opening safe exit options', 'assertive');
         showScreen('exit');
       });
     } else {

@@ -29,7 +29,7 @@ export function render() {
       background: var(--bg-card); border: 1px solid var(--border);
       border-radius: 20px; padding: 24px; width: 100%; max-width: 380px;">
 
-      <div id="ctrl-login-error" class="error-msg" style="margin-bottom: 16px;"></div>
+      <div id="ctrl-login-error" class="error-msg" role="alert" aria-live="assertive" aria-atomic="true" style="margin-bottom: 16px;"></div>
 
       <form id="ctrl-login-form" action="#" onsubmit="return false;" autocomplete="on"
         style="display:flex;flex-direction:column;gap:0;">
