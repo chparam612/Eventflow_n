@@ -42,7 +42,7 @@ assert(!blockedRoute.path.includes('concN'), 'Blocked zone is excluded from comp
 
 clearRouteCache();
 const congestedZones = baseZones.map(zone => zone.id === 'concN'
-  ? { ...zone, currentFans: 9500, capacity: 10000 }
+  ? { ...zone, currentFans: 30000, capacity: 10000 }
   : zone
 );
 const reroute = findBestRoute('east', 'gates', congestedZones);
