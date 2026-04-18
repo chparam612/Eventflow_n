@@ -15,9 +15,9 @@ import {
 import { getAIInsights } from '/src/gemini.js';
 import { predictFutureDensity, detectSurgeRisk } from '/src/predictiveEngine.js';
 import { rankBestExit } from '/src/evacuationEngine.js';
+import { calculateEvacuationRoutes, getEmergencyMessage } from '/src/emergencyEngine.js';
 import { calculateDensityColor } from '/src/heatmapEngine.js';
 import { calculateTotalVisitors, calculateAverageDensity, findPeakZone, calculateGateUtilization, estimateAverageWaitTime } from '/src/analyticsEngine.js';
-import { calculateEvacuationRoutes, getEmergencyMessage } from '/src/emergencyEngine.js';
 import { buildBigQueryEvent, classifySurgeRisk, invokeCloudEndpoint } from '/src/cloudServices.js';
 
 // NMS approximate bounding coords for each zone overlay
@@ -81,7 +81,7 @@ export function render() {
         <div style="text-align:center;">
           <div id="ctrl-staff-count" style="
             font-family:'Space Grotesk',sans-serif;font-weight:700;
-            font-size:1.1rem;color:#00C49A);">0</div>
+            font-size:1.1rem;color:#00C49A;">0</div>
           <div style="font-size:0.68rem;color:var(--text-muted);">staff online</div>
         </div>
         <button id="ctrl-logout-btn" aria-label="Log out of EventFlow" style="
@@ -196,6 +196,16 @@ export function render() {
           <div id="alert-list" style="display:flex;flex-direction:column;gap:6px;"
             aria-live="polite" aria-label="Live zone status updates">
             <div style="color:var(--text-muted);font-size:0.8rem;">All zones normal</div>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
+            color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
+            🔮 Predictive Alerts</div>
+          <div id="predictive-alerts" style="display:flex;flex-direction:column;gap:6px;"
+            aria-live="polite" aria-label="Predicted zone surge alerts">
+            <div style="color:var(--text-muted);font-size:0.8rem;">No surges predicted</div>
           </div>
         </div>
 
@@ -416,7 +426,7 @@ export async function init(navigate) {
   if (!user || !isControlUser(user)) { navigate('/control-login'); return; }
 
   let currentEmergency = { active: false };
-  let densities = {}; // TASK 1: Declare shared densities object
+  let densities = {};
   let heatmapEnabled = true; // Default ON
   let lastZoneSnapshotHash = '';
 
@@ -693,8 +703,7 @@ export async function init(navigate) {
       const isBlocked = currentEmergency.active && currentEmergency.zone === id;
       
       let color, opacity;
-      if (isBlocked) { 
-        // TASK 4: Blocked zones MUST be BLACK
+      if (isBlocked) {
         color = '#000000'; 
         opacity = 0.9; 
       } 
@@ -800,14 +809,7 @@ export async function init(navigate) {
       .map(([id, d]) => ({ id, density: d }));
     
     for (const zone of criticalZones) {
-      // Auto-push instruction to staff
-      const zoneNames = {
-        north: 'North Stand', south: 'South Stand',
-        east: 'East Stand', west: 'West Stand',
-        concN: 'North Concourse', concS: 'South Concourse',
-        gates: 'Gate Area', parking: 'Parking Zone'
-      };
-      const name = zoneNames[zone.id] || zone.id;
+      const name = ZONES[zone.id]?.name || zone.id;
       const pct = Math.round(zone.density * 100);
       
       // Only alert if not alerted in last 5 minutes
@@ -912,7 +914,6 @@ export async function init(navigate) {
 
   // ── Firebase: listen zones ──
   const unListenZones = listenZones((zones) => {
-    // TASK 1: Populate densities with fallback
     if (!zones) zones = {};
     Object.entries(zones).forEach(([id, z]) => {
       densities[id] = z.density || 0; 
@@ -979,7 +980,7 @@ export async function init(navigate) {
   document.getElementById('emerg-cancel')?.addEventListener('click', () => setModalOpen(false));
   
   document.getElementById('emerg-confirm')?.addEventListener('click', async () => {
-    try { // TASK 8: Prevent UI Crash
+    try {
       const type = document.getElementById('emerg-type-sel').value;
       const zone = document.getElementById('emerg-zone-sel').value;
       const name = ZONES[zone]?.name || zone;
@@ -988,8 +989,7 @@ export async function init(navigate) {
       await setEmergencyStatus(true, type, zone);
       await invokeCloudWorkflow('/emergencyValidate', { type, zone, activatedBy: user.email });
       await pushAnalyticsEvent('emergency_activated', { type, zone, activatedBy: user.email });
-      
-      // TASK 6: Logging
+
       console.log("Emergency Activated:", type);
       console.log("Zone Blocked:", zone);
       
@@ -1023,7 +1023,7 @@ export async function init(navigate) {
   });
   cleanupFirebase.push(unListenEmerg);
 
-  // ── Evacuation Estimates Polling (TASK) ──
+  // ── Evacuation Estimates Polling ──
   function updateEvacuationUI() {
     const { recommendedGate, rankedList } = rankBestExit(ZONES, densities, currentEmergency.active ? currentEmergency.zone : null);
     const listEl = document.getElementById('evacuation-list');
@@ -1070,7 +1070,7 @@ export async function init(navigate) {
     });
   }
 
-  // ── 3-Second UI Pulse (TASK) ──
+  // ── 3-Second UI Pulse ──
   const pulseInt = setInterval(() => {
     const predictions = calculatePredictions(densities);
     updateMapOverlays(densities, predictions);
