@@ -21,7 +21,7 @@
         ".write": "auth != null && auth.token.email.matches(/.*control.*/)",
         "acked": {
           "$uid": {
-            ".write": "auth != null && auth.uid == $uid && root.child('staff/' + auth.uid + '/zone').val() == data.parent().parent().child('zoneId').val()",
+            ".write": "auth != null && auth.uid == $uid && root.child('staff/' + auth.uid + '/zone').val() == newData.parent().parent().child('zoneId').val()",
             ".validate": "newData.isNumber()"
           }
         }

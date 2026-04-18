@@ -26,6 +26,7 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const CLOUD_BACKEND_BASE = (typeof window !== 'undefined' && window.__EF_CLOUD_BACKEND_BASE__) || '';
+let _cloudEndpointWarned = false;
 
 // ─── Write Guard — prevents infinite recursion loops ──────────────────────
 const _writing = new Set();
@@ -92,7 +93,13 @@ export async function pushPerformanceMetric(name, value, context = {}) {
 }
 
 export async function invokeCloudWorkflow(route, payload = {}) {
-  if (!CLOUD_BACKEND_BASE) return null;
+  if (!CLOUD_BACKEND_BASE) {
+    if (!_cloudEndpointWarned) {
+      _cloudEndpointWarned = true;
+      console.info('[Firebase] Cloud workflow endpoint is not configured; using local fallback only.');
+    }
+    return null;
+  }
   try {
     const res = await fetch(`${CLOUD_BACKEND_BASE}${route}`, {
       method: 'POST',

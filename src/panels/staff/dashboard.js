@@ -9,6 +9,8 @@ import {
 } from '/src/firebase.js';
 import { setStaffOverride, clearStaffOverride, ZONES } from '/src/simulation.js';
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
 export function render() {
   return `
   <div style="
@@ -239,7 +241,7 @@ export async function init(navigate) {
       textEl.style.color = 'var(--text-primary)';
       ackBtn.style.display = 'none';
     }
-  }, { limit: 10, since: Date.now() - 86400000 });
+  }, { limit: 10, since: Date.now() - ONE_DAY_MS });
 
   // ── Acknowledge button ──
   document.getElementById('ack-btn')?.addEventListener('click', async function () {
