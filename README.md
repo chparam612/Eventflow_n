@@ -216,7 +216,6 @@ firebase deploy
   - `ai_insights_interval_ms`
   - `auto_alert_cooldown_ms`
   - `telemetry_sink`
-  - `telemetry_function_enabled`
 - Optional callable function sink: `ingestTelemetry` (region: `asia-south1`)
 - App Check auto-initializes when `window.__EF_APPCHECK_SITE_KEY` is provided
 

@@ -6,7 +6,7 @@ import { getCurrentUser, isControlUser, logout } from '/src/auth.js';
 import {
   writeZone, pushInstruction, pushNudge,
   listenZones, listenAllStaff, listenEmergency, setEmergencyStatus,
-  trackEvent, getNumberConfig, startPerformanceTrace, stopPerformanceTrace
+  trackEvent, getNumberConfig, getBooleanConfig, startPerformanceTrace, stopPerformanceTrace
 } from '/src/firebase.js';
 import {
   simulateTick, setTick, getTick, getTickLabel,
@@ -435,6 +435,7 @@ export async function init(navigate) {
   let heatmapEnabled = true; // Default ON
   const autoAlertCooldownMs = getNumberConfig('auto_alert_cooldown_ms', 300000, 60000, 1800000);
   const aiRefreshIntervalMs = getNumberConfig('ai_insights_interval_ms', 120000, 30000, 300000);
+  const enableSyncTracing = getBooleanConfig('perf_zone_sync_trace_enabled', false);
 
   // ── DOM refs ──
   const scrubber   = document.getElementById('ctrl-scrubber');
@@ -825,12 +826,14 @@ export async function init(navigate) {
   }
 
   async function syncZonesToFirebase(nextDensities) {
-    const perfTrace = startPerformanceTrace('sync_zones');
+    const perfTrace = enableSyncTracing ? startPerformanceTrace('sync_zones') : null;
     const writes = Object.entries(nextDensities).map(([id, d]) =>
       writeZone(id, d, getZoneStatus(d))
     );
     await Promise.allSettled(writes);
-    stopPerformanceTrace(perfTrace, { zoneCount: writes.length });
+    if (perfTrace) {
+      stopPerformanceTrace(perfTrace, { zoneCount: writes.length });
+    }
   }
 
   function calculatePredictions(densities) {

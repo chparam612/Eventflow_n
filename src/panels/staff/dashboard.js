@@ -326,7 +326,6 @@ export async function init(navigate) {
   // ── Emergency Listener ──
   const emergOverlay = document.getElementById('staff-emerg-overlay');
   const emergMsg = document.getElementById('staff-emerg-msg');
-  const emergAck = document.getElementById('staff-emerg-ack');
   let lastFocusedEl = null;
   const unListenEmerg = listenEmergency((state) => {
     if (state.active && state.zone === zone) {
@@ -335,12 +334,13 @@ export async function init(navigate) {
       }
       if (emergOverlay) emergOverlay.style.display = 'flex';
       if (emergMsg) emergMsg.textContent = `🚨 ${state.type} detected in ${zoneName.toUpperCase()}. Redirect fans to nearest safe exit immediately.`;
-      if (emergAck) setTimeout(() => emergAck.focus(), 0);
+      const emergAck = document.getElementById('staff-emerg-ack');
+      if (emergAck) requestAnimationFrame(() => emergAck.focus());
       void trackEvent('staff_emergency_received', { zoneId: zone, type: state.type || 'unknown' }, { route: '/staff' });
     } else {
       if (emergOverlay) emergOverlay.style.display = 'none';
       if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') {
-        setTimeout(() => lastFocusedEl.focus(), 0);
+        requestAnimationFrame(() => lastFocusedEl.focus());
       }
     }
   });

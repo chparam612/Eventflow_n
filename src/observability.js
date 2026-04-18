@@ -40,17 +40,17 @@ export function buildTelemetryRecord(eventName, params = {}, context = {}) {
   };
 }
 
-export function toNumberSetting(value, fallback, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY) {
+export function toNumberSetting(value, defaultValue, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY) {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
+  if (!Number.isFinite(parsed)) return defaultValue;
   return Math.max(min, Math.min(max, parsed));
 }
 
-export function toBooleanSetting(value, fallback = false) {
+export function toBooleanSetting(value, defaultValue = false) {
   if (typeof value === 'boolean') return value;
-  if (typeof value !== 'string') return fallback;
+  if (typeof value !== 'string') return defaultValue;
   const norm = value.trim().toLowerCase();
   if (['true', '1', 'yes', 'on'].includes(norm)) return true;
   if (['false', '0', 'no', 'off'].includes(norm)) return false;
-  return fallback;
+  return defaultValue;
 }

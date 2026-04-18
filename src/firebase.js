@@ -44,7 +44,7 @@ const REMOTE_CONFIG_DEFAULTS = {
   ai_insights_interval_ms: '120000',
   auto_alert_cooldown_ms: '300000',
   telemetry_sink: 'database',
-  telemetry_function_enabled: 'false'
+  perf_zone_sync_trace_enabled: 'false'
 };
 
 // ─── Write Guard — prevents infinite recursion loops ──────────────────────
@@ -97,7 +97,8 @@ function initAppCheckIfConfigured() {
 
 function initFunctionsSink() {
   try {
-    const functions = getFunctions(app, 'asia-south1');
+    const region = window.__EF_FUNCTIONS_REGION || 'asia-south1';
+    const functions = getFunctions(app, region);
     ingestTelemetryFn = httpsCallable(functions, 'ingestTelemetry');
   } catch (e) {
     ingestTelemetryFn = null;
@@ -151,7 +152,10 @@ export function startPerformanceTrace(name) {
 export function stopPerformanceTrace(perfTrace, attributes = {}) {
   if (!perfTrace) return;
   try {
-    Object.entries(sanitizeTelemetryParams(attributes)).forEach(([k, v]) => perfTrace.putAttribute(k, String(v)));
+    const sanitized = sanitizeTelemetryParams(attributes);
+    for (const [key, value] of Object.entries(sanitized)) {
+      perfTrace.putAttribute(key, String(value));
+    }
     perfTrace.stop();
   } catch (e) {}
 }
@@ -165,8 +169,7 @@ export async function trackEvent(eventName, params = {}, context = {}) {
     }
     const useFunctions =
       context.forceFunctions ||
-      getConfigValue('telemetry_sink', 'database') === 'functions' ||
-      getBooleanConfig('telemetry_function_enabled', false);
+      getConfigValue('telemetry_sink', 'database') === 'functions';
     if (useFunctions && ingestTelemetryFn) {
       tasks.push(ingestTelemetryFn(record));
     }
