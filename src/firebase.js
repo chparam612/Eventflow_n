@@ -25,9 +25,12 @@ const firebaseConfig = {
 // ─── App Init ──────────────────────────────────────────────────────────────
 export const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const CLOUD_BACKEND_BASE = (typeof window !== 'undefined' && window.__EF_CLOUD_BACKEND_BASE__) || '';
+let _cloudEndpointWarned = false;
 
 // ─── Write Guard — prevents infinite recursion loops ──────────────────────
 const _writing = new Set();
+const _activeListeners = new Map();
 
 async function safeWrite(key, fn) {
   if (_writing.has(key)) return;
@@ -38,6 +41,75 @@ async function safeWrite(key, fn) {
     console.warn('[Firebase] Write failed:', key, e.message);
   } finally {
     _writing.delete(key);
+  }
+}
+
+function registerListener(key, targetRef, handler) {
+  const existing = _activeListeners.get(key);
+  if (existing?.targetRef) {
+    try { off(existing.targetRef); } catch (_) {}
+  }
+  onValue(targetRef, handler);
+  _activeListeners.set(key, { targetRef });
+  return () => {
+    const current = _activeListeners.get(key);
+    if (current?.targetRef === targetRef) {
+      try { off(targetRef); } catch (_) {}
+      _activeListeners.delete(key);
+      return;
+    }
+    try { off(targetRef); } catch (_) {}
+  };
+}
+
+async function writeAuditTrail(action, payload = {}, actor = 'system') {
+  try {
+    await push(ref(db, 'auditTrail'), {
+      action,
+      actor,
+      payload,
+      timestamp: Date.now()
+    });
+  } catch (_) {}
+}
+
+export async function pushAnalyticsEvent(type, payload = {}) {
+  try {
+    const event = {
+      type,
+      payload,
+      source: 'eventflow-web',
+      timestamp: Date.now()
+    };
+    await push(ref(db, 'analytics/events'), event);
+    return event;
+  } catch (_) {
+    return null;
+  }
+}
+
+export async function pushPerformanceMetric(name, value, context = {}) {
+  return pushAnalyticsEvent('performance_metric', { name, value, ...context });
+}
+
+export async function invokeCloudWorkflow(route, payload = {}) {
+  if (!CLOUD_BACKEND_BASE) {
+    if (!_cloudEndpointWarned) {
+      _cloudEndpointWarned = true;
+      console.info('[Firebase] Cloud workflow endpoint is not configured; using local fallback only.');
+    }
+    return null;
+  }
+  try {
+    const res = await fetch(`${CLOUD_BACKEND_BASE}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) {
+    return null;
   }
 }
 
@@ -59,21 +131,26 @@ export async function writeStaffStatus(uid, zone, status, online = true) {
       zone,
       status,
       online,
+      updatedBy: uid,
       updatedAt: Date.now()
     })
   );
+  await writeAuditTrail('staff_status_updated', { uid, zone, status, online }, uid);
 }
 
 export async function pushInstruction(zoneId, message, sentBy) {
-  await safeWrite('instr:' + zoneId + ':' + Date.now(), () =>
-    push(ref(db, 'instructions'), {
+  const key = 'instr:' + zoneId + ':' + Date.now();
+  await safeWrite(key, async () => {
+    await push(ref(db, 'instructions'), {
       zoneId,
       message,
       sentBy,
       sentAt: Date.now(),
-      acked: []
-    })
-  );
+      acked: {}
+    });
+  });
+  await pushAnalyticsEvent('instruction_dispatched', { zoneId, sentBy, messageLength: message.length });
+  await writeAuditTrail('instruction_dispatched', { zoneId, message }, sentBy || 'unknown');
 }
 
 export async function pushNudge(zoneId, message) {
@@ -84,6 +161,32 @@ export async function pushNudge(zoneId, message) {
       sentAt: Date.now()
     })
   );
+  await pushAnalyticsEvent('attendee_nudge_sent', { zoneId, messageLength: message.length });
+}
+
+export async function pushStaffReport(uid, zoneId, type, message = '') {
+  await safeWrite('staff_report:' + uid + ':' + Date.now(), async () => {
+    await push(ref(db, 'staffReports'), {
+      uid,
+      zoneId,
+      type,
+      message,
+      createdAt: Date.now()
+    });
+  });
+  await pushAnalyticsEvent('staff_quick_report', { uid, zoneId, type });
+  await writeAuditTrail('staff_report_submitted', { uid, zoneId, type }, uid);
+}
+
+export async function ackInstruction(instructionId, staffUid, zoneId) {
+  if (!instructionId || !staffUid) return;
+  const ackAt = Date.now();
+  await safeWrite('ack:' + instructionId + ':' + staffUid, async () => {
+    await set(ref(db, `instructions/${instructionId}/acked/${staffUid}`), ackAt);
+  });
+  await pushAnalyticsEvent('instruction_acknowledged', { instructionId, staffUid, zoneId, ackAt });
+  await writeAuditTrail('instruction_acknowledged', { instructionId, zoneId, ackAt }, staffUid);
+  await invokeCloudWorkflow('/instructionAck', { instructionId, staffUid, zoneId, ackAt });
 }
 
 export async function saveAttendeeData(uid, data) {
@@ -125,44 +228,45 @@ export async function setEmergencyStatus(active, type = null, zone = null) {
 
 export function listenZones(cb) {
   const r = ref(db, 'zones');
-  onValue(r, snap => cb(snap.val() || {}));
-  return () => off(r);
+  return registerListener('zones:global', r, snap => cb(snap.val() || {}));
 }
 
-export function listenInstructions(zoneId, cb) {
+export function listenInstructions(zoneId, cb, options = {}) {
+  const limit = Math.max(1, Math.min(30, options.limit || 10));
+  const since = options.since || 0;
   const q = query(
     ref(db, 'instructions'),
     orderByChild('zoneId'),
     equalTo(zoneId),
-    limitToLast(10)
+    limitToLast(limit)
   );
-  onValue(q, snap => {
+  return registerListener('instructions:' + zoneId, q, snap => {
     const items = [];
-    snap.forEach(c => items.push({ id: c.key, ...c.val() }));
+    snap.forEach(c => {
+      const row = { id: c.key, ...c.val() };
+      if (!since || (row.sentAt || 0) >= since) items.push(row);
+    });
     if (cb) cb(items.reverse());
   });
-  return () => off(q);
 }
 
 export function listenNudges(cb) {
   const q = query(ref(db, 'nudges'), limitToLast(5));
-  onValue(q, snap => {
+  return registerListener('nudges:global', q, snap => {
     const items = [];
     snap.forEach(c => items.push({ id: c.key, ...c.val() }));
     if (cb) cb(items.reverse());
   });
-  return () => off(q);
 }
 
 export function listenAllStaff(cb) {
   const r = ref(db, 'staff');
-  onValue(r, snap => cb(snap.val() || {}));
-  return () => off(r);
+  return registerListener('staff:all', r, snap => cb(snap.val() || {}));
 }
 
 export function listenEmergency(cb) {
   const r = ref(db, 'emergency/status');
-  onValue(r, snap => {
+  return registerListener('emergency:status', r, snap => {
     const val = snap.val();
     if (!val) {
       // Initialize if missing
@@ -172,5 +276,4 @@ export function listenEmergency(cb) {
       cb(val);
     }
   });
-  return () => off(r);
 }

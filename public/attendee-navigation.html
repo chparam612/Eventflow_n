@@ -53,23 +53,6 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 1.2rem;
     }
-    .back-btn:focus-visible,
-    button:focus-visible,
-    select:focus-visible {
-      outline: 3px solid #00C49A;
-      outline-offset: 2px;
-    }
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      border: 0;
-      white-space: nowrap;
-    }
   </style>
 
   <script>
@@ -101,27 +84,25 @@
 <body>
 
   <button class="back-btn" onclick="window.history.back()" aria-label="Go back">←</button>
-  <div id="map" aria-label="Attendee navigation dashboard"></div>
+  <div id="map" role="region" aria-label="Attendee navigation dashboard"></div>
   
   <div class="panel">
     <!-- UI Controllers -->
     <div style="display:flex; gap:10px; margin-bottom:12px;">
-      <label for="startZone" class="sr-only">Start zone</label>
-      <select id="startZone" style="flex:1; padding:8px; background:var(--bg-deep); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-family:'DM Sans', sans-serif;">
+      <select id="startZone" aria-label="Starting zone" style="flex:1; padding:8px; background:var(--bg-deep); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-family:'DM Sans', sans-serif;">
       </select>
       <span style="display:flex; align-items:center; color:var(--text-secondary);">→</span>
-      <label for="destinationZone" class="sr-only">Destination zone</label>
-      <select id="destinationZone" style="flex:1; padding:8px; background:var(--bg-deep); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-family:'DM Sans', sans-serif;">
+      <select id="destinationZone" aria-label="Destination zone" style="flex:1; padding:8px; background:var(--bg-deep); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-family:'DM Sans', sans-serif;">
       </select>
     </div>
-    <button id="calculateRouteBtn" aria-label="Calculate best route" style="width:100%; padding:10px; margin-bottom:16px; background:#4A90E2; color:#FFF; font-weight:bold; border:none; border-radius:8px; cursor:pointer; font-family:'DM Sans', sans-serif;">Calculate Route</button>
+    <button id="calculateRouteBtn" style="width:100%; padding:10px; margin-bottom:16px; background:#4A90E2; color:#FFF; font-weight:bold; border:none; border-radius:8px; cursor:pointer; font-family:'DM Sans', sans-serif;">Calculate Route</button>
 
-    <h2>🧭 Your Route <span id="nav-eta" role="status" aria-live="polite" style="color:var(--green); font-size: 1rem;">-- min</span></h2>
-    <div class="route-steps" id="nav-path" role="status" aria-live="polite" style="margin-bottom:12px;">Calculating best route...</div>
+    <h2>🧭 Your Route <span id="nav-eta" style="color:var(--green); font-size: 1rem;">-- min</span></h2>
+    <div class="route-steps" id="nav-path" style="margin-bottom:12px;">Calculating best route...</div>
     
-    <div id="instructions-panel" role="status" aria-live="polite" style="margin-bottom:16px; font-size:0.9rem; color:var(--text-secondary); line-height:1.6; display:flex; flex-direction:column; gap:4px;"></div>
+    <div id="instructions-panel" role="status" aria-live="polite" aria-label="Route instructions updates" style="margin-bottom:16px; font-size:0.9rem; color:var(--text-secondary); line-height:1.6; display:flex; flex-direction:column; gap:4px;"></div>
 
-    <div id="nav-suggestion" class="suggestion" role="status" aria-live="polite">
+    <div id="nav-suggestion" class="suggestion">
       <div style="font-family:'Space Grotesk',sans-serif; text-transform:uppercase; font-size:0.75rem; letter-spacing:0.05em; margin-bottom:4px;">Smart Suggestion</div>
       <div id="smartSuggestion">Analyzing conditions...</div>
     </div>
@@ -131,7 +112,7 @@
     import { listenZones, listenEmergency } from '/src/firebase.js';
     import { findBestRoute, findAlternatePath } from '/src/pathfindingEngine.js';
     import { ZONES } from '/src/simulation.js';
-    import { zoneCoordinates } from '/src/zoneCoordinates.js';
+    import { zoneCoordinates, getZonePosition } from '/src/zoneCoordinates.js';
     import { zoneGraph } from '/src/zoneGraph.js';
     import { loginAnonymously } from '/src/auth.js';
     import { updateDensityMap, zoneDensityMap } from '/src/pathfindingEngine.js';
@@ -278,32 +259,18 @@
     // Instruction System
     function generateInstructions(path) {
       const container = document.getElementById("instructions-panel");
-      if (!container) return;
-      container.replaceChildren();
-
       if (!path || path.length < 2) {
-        const empty = document.createElement('div');
-        empty.textContent = 'No valid route instructions available.';
-        container.appendChild(empty);
-        return;
+         container.innerHTML = "<div>No valid route instructions available.</div>";
+         return;
       }
-
-      const list = document.createElement('ol');
-      list.style.margin = '0';
-      list.style.paddingLeft = '1.2rem';
-      list.style.display = 'flex';
-      list.style.flexDirection = 'column';
-      list.style.gap = '4px';
-
+      let html = "";
       path.forEach((zone, index) => {
-        const zoneName = ZONES[zone]?.name || zone;
-        const item = document.createElement('li');
-        if (index === 0) item.textContent = `Start at ${zoneName}`;
-        else if (index === path.length - 1) item.textContent = `Exit to ${zoneName}`;
-        else item.textContent = `Continue to ${zoneName}`;
-        list.appendChild(item);
+         const zoneName = ZONES[zone]?.name || zone;
+         if (index === 0) html += `<div><b>${index + 1}.</b> Start at ${zoneName}</div>`;
+         else if (index === path.length - 1) html += `<div><b>${index + 1}.</b> Exit to ${zoneName}</div>`;
+         else html += `<div><b>${index + 1}.</b> Continue to ${zoneName}</div>`;
       });
-      container.appendChild(list);
+      container.innerHTML = html;
     }
 
     // Moving Simulation Node
@@ -346,36 +313,7 @@
     let currentDensities = {};
     let isEmergency = false;
     let emergencyZone = null;
-    let routeUpdateTimer = null;
     
-    function buildZonesForRouting() {
-      const enrichedZones = Object.entries(currentDensities).map(([id, d]) => {
-        const zDef = ZONES[id] || {};
-        return {
-          id,
-          capacity: zDef.cap || 10000,
-          currentFans: Math.round(d * (zDef.cap || 10000)),
-          blocked: (isEmergency && emergencyZone === id)
-        };
-      });
-
-      return enrichedZones.length > 0 ? enrichedZones
-        : Object.keys(zoneCoordinates).map(id => ({
-            id, capacity: 10000, currentFans: 0, blocked: false
-          }));
-    }
-
-    function computeRouteState(startZone, destinationZone) {
-      const zonesForRouting = buildZonesForRouting();
-      const pathResult = findBestRoute(startZone, destinationZone, zonesForRouting);
-      const path = pathResult?.path || [];
-      const altResult = path.length > 1
-        ? findAlternatePath(startZone, destinationZone, path, zonesForRouting)
-        : null;
-
-      return { pathResult, path, altResult };
-    }
-
     function populateDropdowns() {
       const startSelect = document.getElementById("startZone");
       const destSelect = document.getElementById("destinationZone");
@@ -387,36 +325,82 @@
       startSelect.value = "parking";
       destSelect.value = "north";
       
-      document.getElementById("calculateRouteBtn").addEventListener("click", () => scheduleRouteUpdate(0));
+      document.getElementById("calculateRouteBtn").addEventListener("click", updateNavigation);
     }
 
-    function runRouteUpdate() {
+    window.findShortestPath = function(start, dest, graphOverride) {
+      const enrichedZones = Object.entries(currentDensities).map(([id, d]) => {
+        const zDef = ZONES[id] || {};
+        return {
+          id, capacity: zDef.cap || 10000, currentFans: Math.round(d * (zDef.cap || 10000)), blocked: (isEmergency && emergencyZone === id)
+        };
+      });
+      const res = findBestRoute(start, dest, enrichedZones);
+      return res ? res.path : [];
+    };
+
+    window.calculateBestRoute = function() {
       const start = document.getElementById("startZone").value;
       const destination = document.getElementById("destinationZone").value;
+      console.log("Start Zone:", start);
+      console.log("Destination Zone:", destination);
       
       if (!start || !destination) {
+        console.error("Missing zone values");
         return;
       }
-
-      const { pathResult, path, altResult } = computeRouteState(start, destination);
-      if (!pathResult || path.length === 0) {
-        clearGoldRoutes();
-        clearBlueRoutes();
-        document.getElementById('nav-path').textContent = `No safe route found for ${start} → ${destination}`;
-        document.getElementById('nav-eta').innerText = '-- min';
-        generateInstructions([]);
-        document.getElementById("smartSuggestion").innerText = "🔴 Route unavailable. Please choose a different destination.";
-        document.getElementById("nav-suggestion").className = 'suggestion status-critical';
+      
+      const bestPath = window.findShortestPath(start, destination);
+      if (!bestPath || bestPath.length === 0) {
+        console.error("No path returned from Dijkstra");
         return;
       }
+      console.log("Best Path:", bestPath);
+      
+      updateNavigation();
+    };
 
+    // Keep internal legacy logic robust
+    function updateNavigation() {
+      const startZone = document.getElementById("startZone").value;
+      const destinationZone = document.getElementById("destinationZone").value;
+
+      const enrichedZones = Object.entries(currentDensities).map(([id, d]) => {
+        const zDef = ZONES[id] || {};
+        return {
+          id, capacity: zDef.cap || 10000, currentFans: Math.round(d * (zDef.cap || 10000)), blocked: (isEmergency && emergencyZone === id)
+        };
+      });
+
+      // 1. Calculate Routes — use all known zones as fallback if densities empty
+      const zonesForRouting = enrichedZones.length > 0 ? enrichedZones
+        : Object.keys(zoneCoordinates).map(id => ({
+            id, capacity: 10000, currentFans: 0, blocked: false
+          }));
+
+      let pathResult = findBestRoute(startZone, destinationZone, zonesForRouting);
+      if (!pathResult || !pathResult.path || pathResult.path.length === 0) {
+        console.error("updateNavigation: no path found for", startZone, "->", destinationZone);
+        return;
+      }
+      const path = pathResult.path;
+      
+      let altResult = findAlternatePath(startZone, destinationZone, path, zonesForRouting);
+
+      // 2. Map Update (Primary + Alternate)
       if (window.efMap) {
         drawBestRoute(path);
+        console.log("Best Route Drawn");
         if (altResult && altResult.path) drawAlternateRoute(altResult.path);
         else clearBlueRoutes();
+        console.log("Alternate Route Drawn");
         startMarkerSimulation(path);
+      } else {
+        // Map not ready yet — will re-run once mapsReady fires
+        console.warn("Map not ready, queuing route draw");
       }
 
+      // 3. Update DOM Panel
       const pathText = path.map(p => ZONES[p]?.name?.replace(' Stand','') || p).join(' → ');
       document.getElementById('nav-path').textContent = pathText;
       
@@ -425,20 +409,8 @@
       
       generateInstructions(path);
       updateSmartMessage(path);
+      console.log("Smart Suggestion Updated");
     }
-
-    function scheduleRouteUpdate(delay = 120) {
-      // Debounce: reset an existing timer so only the last route recalculation request executes.
-      // 120ms was chosen after manual UI checks to keep route updates near-instant while collapsing
-      // bursty Firebase density events into a single repaint, preventing visible map/panel flicker.
-      if (routeUpdateTimer) clearTimeout(routeUpdateTimer);
-      routeUpdateTimer = setTimeout(() => {
-        routeUpdateTimer = null;
-        runRouteUpdate();
-      }, delay);
-    }
-
-    window.calculateBestRoute = () => scheduleRouteUpdate(0);
 
     function analyzeRoute(path) {
       let crowdedZones = [];
@@ -516,19 +488,26 @@
       listenZones(dens => {
         const data = dens;
         if (!data) return;
-
+        
         Object.keys(data).forEach(zoneId => {
-          const raw = data[zoneId];
-          currentDensities[zoneId] = raw?.density !== undefined ? raw.density : raw;
+          let rawD = data[zoneId].density !== undefined ? data[zoneId].density : data[zoneId];
+          zoneDensityMap[zoneId] = rawD <= 1.0 ? rawD * 100 : rawD; // Normalization safety
         });
-        updateDensityMap(data);
-        scheduleRouteUpdate(120);
+        
+        console.log("Density Updated:", zoneDensityMap);
+        
+        try {
+          window.calculateBestRoute(); // Re-route on density change — handles full route draw cycle
+        } catch(e) {
+          console.error("calculateBestRoute failed:", e);
+        }
+        // NOTE: refreshRoutes() removed — zone graph drawn once at mapsReady, not on every density tick
       });
 
       listenEmergency(state => {
         isEmergency = state.active;
         emergencyZone = state.zone;
-        scheduleRouteUpdate(0);
+        window.calculateBestRoute();
       });
     }
 
@@ -536,7 +515,7 @@
     window.addEventListener('mapsReady', () => {
       console.log("Map ready — drawing initial best route");
       if (document.getElementById("startZone")?.value) {
-        scheduleRouteUpdate(0);
+        window.calculateBestRoute();
       }
     });
 

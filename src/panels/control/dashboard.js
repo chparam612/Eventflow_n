@@ -5,11 +5,12 @@
 import { getCurrentUser, isControlUser, logout } from '/src/auth.js';
 import {
   writeZone, pushInstruction, pushNudge,
-  listenZones, listenAllStaff, listenEmergency, setEmergencyStatus
+  listenZones, listenAllStaff, listenEmergency, setEmergencyStatus,
+  pushAnalyticsEvent, pushPerformanceMetric, invokeCloudWorkflow
 } from '/src/firebase.js';
 import {
   simulateTick, setTick, getTick, getTickLabel,
-  getZoneDensity, getZoneStatus, getStatusColor, ZONES
+  getZoneDensity, getZoneStatus, ZONES
 } from '/src/simulation.js';
 import { getAIInsights } from '/src/gemini.js';
 import { predictFutureDensity, detectSurgeRisk } from '/src/predictiveEngine.js';
@@ -17,6 +18,7 @@ import { rankBestExit } from '/src/evacuationEngine.js';
 import { calculateEvacuationRoutes, getEmergencyMessage } from '/src/emergencyEngine.js';
 import { calculateDensityColor } from '/src/heatmapEngine.js';
 import { calculateTotalVisitors, calculateAverageDensity, findPeakZone, calculateGateUtilization, estimateAverageWaitTime } from '/src/analyticsEngine.js';
+import { buildBigQueryEvent, classifySurgeRisk, invokeCloudEndpoint } from '/src/cloudServices.js';
 
 // NMS approximate bounding coords for each zone overlay
 const ZONE_BOUNDS = {
@@ -104,7 +106,7 @@ export function render() {
           font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
           color:var(--text-muted);text-transform:uppercase;margin-bottom:12px;">
           Staff Online</div>
-        <div id="staff-list" style="display:flex;flex-direction:column;gap:6px;">
+        <div id="staff-list" style="display:flex;flex-direction:column;gap:6px;" aria-live="polite" aria-label="Live staff status list">
           <div style="color:var(--text-muted);font-size:0.82rem;">Waiting for staff…</div>
         </div>
       </div>
@@ -284,7 +286,7 @@ export function render() {
             color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
             📡 Dispatch</div>
 
-          <select id="ctrl-zone-sel" style="width:100%;margin-bottom:8px;font-size:0.85rem;">
+          <select id="ctrl-zone-sel" aria-label="Select target zone for dispatch" style="width:100%;margin-bottom:8px;font-size:0.85rem;">
             ${Object.entries(ZONES).map(([id, z]) =>
               `<option value="${id}">${z.name}</option>`).join('')}
           </select>
@@ -305,7 +307,7 @@ export function render() {
             `).join('')}
           </div>
 
-          <textarea id="ctrl-instr-text" placeholder="Custom instruction…" style="
+          <textarea id="ctrl-instr-text" aria-label="Custom instruction message for dispatch" placeholder="Custom instruction…" style="
             width:100%;height:60px;resize:none;margin-bottom:8px;
             font-size:0.85rem;"></textarea>
 
@@ -389,10 +391,10 @@ export function render() {
     @keyframes emerg-pulse { from { opacity: 0.6; } to { opacity: 1; } }
   </style>
   
-  <div id="emerg-modal-overlay">
+  <div id="emerg-modal-overlay" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="emerg-modal-title" aria-describedby="emerg-modal-desc" tabindex="-1">
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:24px;width:320px;box-shadow:0 20px 40px rgba(0,0,0,0.4);">
-      <h3 style="margin-top:0;color:var(--red);display:flex;align-items:center;gap:10px;">🚨 Activate Emergency</h3>
-      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px;">This will block the selected zone and immediately alert all staff and attendees.</p>
+      <h3 id="emerg-modal-title" style="margin-top:0;color:var(--red);display:flex;align-items:center;gap:10px;">🚨 Activate Emergency</h3>
+      <p id="emerg-modal-desc" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px;">This will block the selected zone and immediately alert all staff and attendees.</p>
       
       <div style="margin-bottom:16px;">
         <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Type</label>
@@ -426,6 +428,7 @@ export async function init(navigate) {
   let currentEmergency = { active: false };
   let densities = {};
   let heatmapEnabled = true; // Default ON
+  let lastZoneSnapshotHash = '';
 
   // ── DOM refs ──
   const scrubber   = document.getElementById('ctrl-scrubber');
@@ -434,6 +437,38 @@ export async function init(navigate) {
   const totalEl    = document.getElementById('ctrl-total');
   const metricAvg  = document.getElementById('metric-avg');
   const metricNudges = document.getElementById('metric-nudges');
+  const dashboardInitStart = performance.now();
+
+  function throttle(fn, waitMs = 800) {
+    let last = 0;
+    let timeout = null;
+    let queuedArgs = null;
+    const run = () => {
+      timeout = null;
+      last = Date.now();
+      fn(...(queuedArgs || []));
+      queuedArgs = null;
+    };
+    return (...args) => {
+      queuedArgs = args;
+      const now = Date.now();
+      const remaining = waitMs - (now - last);
+      if (remaining <= 0) {
+        if (timeout) clearTimeout(timeout);
+        run();
+      } else if (!timeout) {
+        timeout = setTimeout(run, remaining);
+      }
+    };
+  }
+
+  const refreshLiveUI = throttle((liveDensities, predictions) => {
+    updateMapOverlays(liveDensities, predictions);
+    updateMetrics(liveDensities);
+    renderAlerts(liveDensities);
+    renderPredictiveAlerts(predictions);
+    updateAnalyticsDashboard(liveDensities);
+  }, 1000);
 
   // ── Helpers ──
   function getInsightColor(type) {
@@ -494,11 +529,13 @@ export async function init(navigate) {
       const zone = ZONES[s.zone]?.name || s.zone || 'Unknown';
       const ago = s.updatedAt ? Math.round((Date.now() - s.updatedAt) / 60000) : '?';
       return `
-        <div style="
+        <button type="button" style="
           background:var(--bg-card2);border:1px solid var(--border);
-          border-radius:10px;padding:10px 12px;cursor:pointer;transition:all 0.2s;"
-          onclick="document.getElementById('ctrl-zone-sel').value='${s.zone || 'north'}'"
-          title="Click to dispatch to ${zone}">
+          border-radius:10px;padding:10px 12px;cursor:pointer;transition:all 0.2s;
+          width:100%;text-align:left;" class="staff-row-select"
+          data-zone="${s.zone || 'north'}"
+          title="Click to dispatch to ${zone}"
+          aria-label="Select ${zone} for dispatch">
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="width:7px;height:7px;border-radius:50%;
               background:${color};display:inline-block;flex-shrink:0;"></span>
@@ -509,8 +546,14 @@ export async function init(navigate) {
                 ${s.status || 'offline'} · ${ago}m ago</div>
             </div>
           </div>
-        </div>`;
+        </button>`;
     }).join('');
+    el.querySelectorAll('.staff-row-select').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const zel = document.getElementById('ctrl-zone-sel');
+        if (zel) zel.value = btn.dataset.zone || 'north';
+      });
+    });
   }
 
   async function renderAIInsights(densities) {
@@ -788,6 +831,13 @@ export async function init(navigate) {
         zone.id,
         `${name} is getting crowded. Alternative routes are available nearby.`
       );
+      await pushAnalyticsEvent('auto_alert_dispatched', buildBigQueryEvent('auto_alert_dispatched', {
+        zoneId: zone.id,
+        zoneName: name,
+        densityPercent: pct,
+        riskClass: classifySurgeRisk(zone.density, pct)
+      }));
+      await invokeCloudEndpoint('/classifySurge', { zoneId: zone.id, densityPercent: pct });
       
       console.log('Auto-alert sent for:', name, pct + '%');
     }
@@ -818,10 +868,7 @@ export async function init(navigate) {
   async function doTick() {
     const densities = simulateTick();
     const predictions = calculatePredictions(densities);
-    updateMapOverlays(densities, predictions);
-    updateMetrics(densities);
-    renderAlerts(densities);
-    renderPredictiveAlerts(predictions);
+    refreshLiveUI(densities, predictions);
 
     // Update scrubber
     const tick = getTick();
@@ -835,9 +882,7 @@ export async function init(navigate) {
     if (ctrlTimeEl) ctrlTimeEl.textContent = getTickLabel();
 
     // Write to Firebase
-    for (const [id, d] of Object.entries(densities)) {
-      await writeZone(id, d, getZoneStatus(d));
-    }
+    await Promise.all(Object.entries(densities).map(([id, d]) => writeZone(id, d, getZoneStatus(d))));
 
     await autoAlertCheck(densities);
   }
@@ -863,28 +908,32 @@ export async function init(navigate) {
       import('/src/simulation.js').then(m => res(m.getZoneDensity()));
     });
     const predictions = calculatePredictions(densities);
-    updateMapOverlays(densities, predictions);
-    updateMetrics(densities);
-    renderAlerts(densities);
-    renderPredictiveAlerts(predictions);
-    for (const [id, d] of Object.entries(densities)) {
-      await writeZone(id, d, getZoneStatus(d));
-    }
+    refreshLiveUI(densities, predictions);
+    await Promise.all(Object.entries(densities).map(([id, d]) => writeZone(id, d, getZoneStatus(d))));
   });
 
   // ── Firebase: listen zones ──
   const unListenZones = listenZones((zones) => {
     if (!zones) zones = {};
-    Object.entries(zones).forEach(([id, z]) => { 
+    Object.entries(zones).forEach(([id, z]) => {
       densities[id] = z.density || 0; 
     });
+
+    const snapshotHash = JSON.stringify(densities);
+    if (snapshotHash === lastZoneSnapshotHash) return;
+    lastZoneSnapshotHash = snapshotHash;
+
+    const updateLagSamples = Object.values(zones)
+      .map(z => Date.now() - (z?.updatedAt || Date.now()))
+      .filter(v => Number.isFinite(v) && v >= 0);
+    if (updateLagSamples.length) {
+      const avgLagMs = Math.round(updateLagSamples.reduce((a, b) => a + b, 0) / updateLagSamples.length);
+      pushPerformanceMetric('control_zone_update_lag_ms', avgLagMs, { zoneCount: Object.keys(zones).length }).catch(() => {});
+    }
     
     if (Object.keys(densities).length > 0) {
       const predictions = calculatePredictions(densities);
-      updateMapOverlays(densities, predictions);
-      updateMetrics(densities);
-      renderAlerts(densities);
-      renderPredictiveAlerts(predictions);
+      refreshLiveUI(densities, predictions);
     }
   });
   cleanupFirebase.push(unListenZones);
@@ -892,6 +941,31 @@ export async function init(navigate) {
   // ── Emergency Actions ──
   const emergBtn = document.getElementById('ctrl-emergency-btn');
   const modal = document.getElementById('emerg-modal-overlay');
+  let modalTriggerEl = null;
+  const modalKeyHandler = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setModalOpen(false);
+    }
+  };
+  const setModalOpen = (open) => {
+    if (!modal) return;
+    if (open) {
+      modalTriggerEl = document.activeElement;
+      document.addEventListener('keydown', modalKeyHandler);
+    } else {
+      document.removeEventListener('keydown', modalKeyHandler);
+    }
+    modal.style.display = open ? 'flex' : 'none';
+    modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (open) {
+      const primary = document.getElementById('emerg-confirm');
+      (primary || modal).focus();
+    } else if (modalTriggerEl && typeof modalTriggerEl.focus === 'function') {
+      modalTriggerEl.focus();
+      modalTriggerEl = null;
+    }
+  };
   
   emergBtn?.addEventListener('click', () => {
     if (currentEmergency.active) {
@@ -899,13 +973,11 @@ export async function init(navigate) {
         setEmergencyStatus(false);
       }
     } else {
-      if (modal) modal.style.display = 'flex';
+      setModalOpen(true);
     }
   });
 
-  document.getElementById('emerg-cancel')?.addEventListener('click', () => {
-    if (modal) modal.style.display = 'none';
-  });
+  document.getElementById('emerg-cancel')?.addEventListener('click', () => setModalOpen(false));
   
   document.getElementById('emerg-confirm')?.addEventListener('click', async () => {
     try {
@@ -913,8 +985,10 @@ export async function init(navigate) {
       const zone = document.getElementById('emerg-zone-sel').value;
       const name = ZONES[zone]?.name || zone;
       
-      if (modal) modal.style.display = 'none';
+      setModalOpen(false);
       await setEmergencyStatus(true, type, zone);
+      await invokeCloudWorkflow('/emergencyValidate', { type, zone, activatedBy: user.email });
+      await pushAnalyticsEvent('emergency_activated', { type, zone, activatedBy: user.email });
 
       console.log("Emergency Activated:", type);
       console.log("Zone Blocked:", zone);
@@ -1001,7 +1075,7 @@ export async function init(navigate) {
     const predictions = calculatePredictions(densities);
     updateMapOverlays(densities, predictions);
     updateAnalyticsDashboard(densities);
-  }, 3000);
+  }, 8000);
   cleanupFirebase.push(() => clearInterval(pulseInt));
 
   // ── Quick instruction buttons ──
@@ -1018,6 +1092,7 @@ export async function init(navigate) {
     const msg  = document.getElementById('ctrl-instr-text')?.value?.trim();
     if (!msg) return;
     await pushInstruction(zone, msg, user.email);
+    await pushAnalyticsEvent('manual_staff_dispatch', { zone, sender: user.email, messageLength: msg.length });
     const conf = document.getElementById('ctrl-send-confirm');
     if (conf) { conf.style.display = 'block'; setTimeout(() => conf.style.display = 'none', 2500); }
     document.getElementById('ctrl-instr-text').value = '';
@@ -1029,6 +1104,7 @@ export async function init(navigate) {
     const msg  = document.getElementById('ctrl-instr-text')?.value?.trim()
               || 'Please move toward Gate ' + (ZONES[zone]?.gate || 'B') + ' to reduce crowding.';
     await pushNudge(zone, msg);
+    await pushAnalyticsEvent('manual_attendee_nudge', { zone, sender: user.email, messageLength: msg.length });
     nudgesSent++;
     if (metricNudges) metricNudges.textContent = nudgesSent;
     const conf = document.getElementById('ctrl-send-confirm');
@@ -1044,9 +1120,11 @@ export async function init(navigate) {
 
   // ── Logout ──
   document.getElementById('ctrl-logout-btn')?.addEventListener('click', () => logout());
+  pushPerformanceMetric('control_dashboard_init_ms', Math.round(performance.now() - dashboardInitStart), { user: user.email }).catch(() => {});
 
   // ── Cleanup ──
   return () => {
+    document.removeEventListener('keydown', modalKeyHandler);
     if (simInterval) clearInterval(simInterval);
     if (aiInterval) clearInterval(aiInterval);
     cleanupFirebase.forEach(fn => { try { fn(); } catch (e) {} });

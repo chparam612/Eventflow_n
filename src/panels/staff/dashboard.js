@@ -5,9 +5,11 @@
 import { getCurrentUser, isStaffUser, logout } from '/src/auth.js';
 import { 
   writeStaffStatus, listenInstructions, pushInstruction, 
-  listenEmergency 
+  listenEmergency, ackInstruction, pushStaffReport, pushPerformanceMetric
 } from '/src/firebase.js';
 import { setStaffOverride, clearStaffOverride, ZONES } from '/src/simulation.js';
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export function render() {
   return `
@@ -46,7 +48,7 @@ export function render() {
         background: var(--bg-card);
         border: 1px solid rgba(0,196,154,0.25);
         border-radius: 16px; padding: 16px;"
-        aria-live="assertive" aria-label="Urgent instructions from control room" role="alert">
+        aria-live="polite" aria-label="Control room instructions" role="status">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
           <span style="font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
             color:#00C49A;text-transform:uppercase;">📡 Control Room</span>
@@ -169,13 +171,13 @@ export function render() {
     </style>
     
     <!-- Emergency Overlay (Hidden by default) -->
-    <div id="staff-emerg-overlay" style="
+    <div id="staff-emerg-overlay" role="alertdialog" aria-modal="true" aria-hidden="true" aria-labelledby="staff-emerg-title" aria-describedby="staff-emerg-msg" style="
       position:fixed;top:0;left:0;right:0;bottom:0;
       background:#060A10;z-index:1001;display:none;
       flex-direction:column;align-items:center;justify-content:center;
       padding:24px;text-align:center;">
       <div style="font-size:4rem;margin-bottom:20px;animation:emerg-pulse 1s infinite alternate;">🚨</div>
-      <h1 style="color:#FF4757;font-family:'Space Grotesk',sans-serif;margin:0 0 10px 0;">EMERGENCY ACTIVE</h1>
+      <h1 id="staff-emerg-title" style="color:#FF4757;font-family:'Space Grotesk',sans-serif;margin:0 0 10px 0;">EMERGENCY ACTIVE</h1>
       <p id="staff-emerg-msg" style="color:#fff;font-size:1.1rem;line-height:1.5;margin-bottom:30px;">
         Evacuate fans immediately!
       </p>
@@ -203,9 +205,11 @@ export async function init(navigate) {
   let zoneStatus = 'clear';
   const reports = [];
   let cleanupInstructions = null;
+  let emergReturnFocusEl = null;
 
   // ── Write initial Firebase status ──
   await writeStaffStatus(uid, zone, 'clear', true);
+  const startTime = performance.now();
 
   // ── Listen for instructions ──
   cleanupInstructions = listenInstructions(zone, (items) => {
@@ -217,17 +221,31 @@ export async function init(navigate) {
       textEl.textContent = latest.message;
       textEl.style.color = 'var(--yellow)';
       ackBtn.style.display = 'inline-block';
-      ackBtn.disabled = false;
       ackBtn.dataset.id = latest.id;
+      const alreadyAcked = Boolean(latest.acked && latest.acked[uid]);
+      if (alreadyAcked) {
+        ackBtn.textContent = '✓ Acknowledged';
+        ackBtn.style.background = 'rgba(0,196,154,0.05)';
+        ackBtn.style.color = 'var(--text-muted)';
+        ackBtn.disabled = true;
+      } else {
+        ackBtn.textContent = 'Acknowledge';
+        ackBtn.style.background = 'rgba(0,196,154,0.1)';
+        ackBtn.style.color = '#00C49A';
+        ackBtn.disabled = false;
+      }
     } else {
       textEl.textContent = 'No instructions — all clear ✓';
       textEl.style.color = 'var(--text-primary)';
       ackBtn.style.display = 'none';
     }
-  });
+  }, { limit: 10, since: Date.now() - ONE_DAY_MS });
 
   // ── Acknowledge button ──
-  document.getElementById('ack-btn')?.addEventListener('click', function () {
+  document.getElementById('ack-btn')?.addEventListener('click', async function () {
+    const instructionId = this.dataset.id;
+    if (!instructionId) return;
+    await ackInstruction(instructionId, uid, zone);
     this.textContent = '✓ Acknowledged';
     this.style.background = 'rgba(0,196,154,0.05)';
     this.style.color = 'var(--text-muted)';
@@ -268,14 +286,15 @@ export async function init(navigate) {
   document.getElementById('btn-crowded')?.addEventListener('click', () => setStatus('crowded'));
 
   // ── Quick report buttons ──
-  const addReport = (type) => {
+  const addReport = (type, messageOverride = '') => {
     const msgs = {
       overcrowding: '👥 Overcrowding reported',
       clear: '✅ Area confirmed clear',
       medical: '🚑 Medical assistance requested',
       other: '⚠️ Custom report sent'
     };
-    reports.unshift({ type, msg: msgs[type] || type, time: new Date().toLocaleTimeString() });
+    const msg = messageOverride || msgs[type] || type;
+    reports.unshift({ type, msg, time: new Date().toLocaleTimeString() });
     const el = document.getElementById('recent-reports');
     if (el) {
       el.innerHTML = reports.slice(0, 3).map(r => `
@@ -285,6 +304,7 @@ export async function init(navigate) {
           <span style="font-size:0.72rem;color:var(--text-muted);">${r.time}</span>
         </div>`).join('');
     }
+    pushStaffReport(uid, zone, type, msg).catch(() => {});
   };
 
   document.querySelectorAll('.quick-report-btn').forEach(btn => {
@@ -305,7 +325,7 @@ export async function init(navigate) {
   document.getElementById('custom-report-send')?.addEventListener('click', () => {
     const txt = document.getElementById('custom-report-text')?.value?.trim();
     if (!txt) return;
-    addReport('other');
+    addReport('other', txt);
     document.getElementById('custom-report-text').value = '';
     document.getElementById('custom-report-box').style.display = 'none';
   });
@@ -319,21 +339,36 @@ export async function init(navigate) {
   // ── Emergency Listener ──
   const emergOverlay = document.getElementById('staff-emerg-overlay');
   const emergMsg = document.getElementById('staff-emerg-msg');
+  const closeEmergencyOverlay = () => {
+    if (!emergOverlay) return;
+    emergOverlay.style.display = 'none';
+    emergOverlay.setAttribute('aria-hidden', 'true');
+    if (emergReturnFocusEl && typeof emergReturnFocusEl.focus === 'function') {
+      emergReturnFocusEl.focus();
+    }
+    emergReturnFocusEl = null;
+  };
   const unListenEmerg = listenEmergency((state) => {
     if (state.active && state.zone === zone) {
-      if (emergOverlay) emergOverlay.style.display = 'flex';
+      if (emergOverlay) {
+        emergReturnFocusEl = document.activeElement;
+        emergOverlay.style.display = 'flex';
+        emergOverlay.setAttribute('aria-hidden', 'false');
+        document.getElementById('staff-emerg-ack')?.focus();
+      }
       if (emergMsg) emergMsg.textContent = `🚨 ${state.type} detected in ${zoneName.toUpperCase()}. Redirect fans to nearest safe exit immediately.`;
     } else {
-      if (emergOverlay) emergOverlay.style.display = 'none';
+      closeEmergencyOverlay();
     }
   });
 
   document.getElementById('staff-emerg-ack')?.addEventListener('click', async () => {
-    if (emergOverlay) emergOverlay.style.display = 'none';
+    closeEmergencyOverlay();
     await pushInstruction(zone, `ACK: Evacuation started by staff ${uid.slice(0,5)}`, 'STAFF');
   });
 
   // ── Cleanup ──
+  pushPerformanceMetric('staff_dashboard_init_ms', Math.round(performance.now() - startTime), { zone }).catch(() => {});
   return () => {
     if (cleanupInstructions) cleanupInstructions();
     if (unListenEmerg) unListenEmerg();

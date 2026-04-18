@@ -58,8 +58,9 @@ test('Predictive alerts have both render target and DOM mount', () => {
 });
 
 test('Emergency modal handlers guard absent DOM node', () => {
-  assert(controlSrc.includes('if (modal) modal.style.display = \'flex\';'), 'Missing modal open guard.');
-  assert(controlSrc.includes('if (modal) modal.style.display = \'none\';'), 'Missing modal close guard.');
+  assert(controlSrc.includes('if (!modal) return;'), 'Missing modal null guard in modal helper.');
+  assert(controlSrc.includes('setModalOpen(true);'), 'Emergency open path should use guarded modal helper.');
+  assert(controlSrc.includes('setModalOpen(false);'), 'Emergency close path should use guarded modal helper.');
 });
 
 test('Control dashboard no longer keeps stale TASK markers', () => {
