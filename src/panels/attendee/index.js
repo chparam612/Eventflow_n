@@ -8,7 +8,7 @@ import {
 } from '/src/simulation.js';
 import { 
   saveAttendeeData, saveFeedback, listenZones, listenNudges, 
-  listenEmergency 
+  listenEmergency, trackEvent
 } from '/src/firebase.js';
 import { renderAIChat, initAIChat } from './aiChat.js';
 import { rankBestExit } from '/src/evacuationEngine.js';
@@ -763,6 +763,7 @@ function renderThankYou() {
 
 // ─── SCREEN SWITCHER ──────────────────────────────────────────────────────
 function showScreen(name) {
+  const previous = screen;
   screen = name;
   const root = document.getElementById('attendee-screen');
   if (!root) return;
@@ -780,6 +781,9 @@ function showScreen(name) {
   root.innerHTML = html;
   root.scrollTop = 0;
   attachScreenListeners(name);
+  if (previous !== name) {
+    void trackEvent('attendee_screen_view', { screen: name }, { route: '/attendee' });
+  }
 }
 
 // ─── SCREEN EVENT LISTENERS ───────────────────────────────────────────────
@@ -814,6 +818,10 @@ function attachScreenListeners(name) {
     document.getElementById('intake-done-btn')?.addEventListener('click', async () => {
       const uid = localStorage.getItem('ef_uid') || 'anon';
       try { await saveAttendeeData(uid, { ...answers, completedAt: Date.now() }); } catch (e) {}
+      void trackEvent('attendee_intake_completed', {
+        transport: answers.transport || '',
+        group: answers.group || ''
+      }, { route: '/attendee' });
       intakeStep = 0;
       currentDensities = getZoneDensity();
       showScreen('plan');
@@ -916,6 +924,10 @@ function attachScreenListeners(name) {
           uid: localStorage.getItem('ef_uid') || 'anon'
         });
       } catch (e) {}
+      void trackEvent('attendee_feedback_submitted', {
+        rating: window._fbStarVal || 0,
+        selectedAspects: chips.length
+      }, { route: '/attendee' });
       showScreen('thanks');
     });
   }
@@ -1012,6 +1024,7 @@ export async function init(navigate) {
   // Silent anonymous authentication to establish Firebase database write permissions
   try {
     await loginAnonymously();
+    void trackEvent('attendee_session_started', {}, { route: '/attendee' });
   } catch (e) {
     console.warn("Silent auth failed:", e);
   }
@@ -1086,6 +1099,9 @@ export async function init(navigate) {
       if (!banner) {
         banner = document.createElement('div');
         banner.id = 'att-emerg-banner';
+        banner.setAttribute('role', 'alert');
+        banner.setAttribute('aria-live', 'assertive');
+        banner.setAttribute('aria-atomic', 'true');
         banner.style = `
           position:fixed; bottom:0; left:0; right:0; z-index:9999;
           background:#FF4757; color:#fff; padding:16px;
@@ -1109,9 +1125,14 @@ export async function init(navigate) {
           border:none; border-radius:10px; font-weight:700; cursor:pointer;">
           VIEW SAFE EXIT ROUTE →
         </button>
-      `;
+        `;
+      void trackEvent('attendee_emergency_banner_shown', {
+        zoneId: state.zone || 'unknown',
+        type: state.type || 'unknown'
+      }, { route: '/attendee' });
       document.getElementById('att-safe-exit-btn')?.addEventListener('click', () => {
         announce('Opening safe exit options', 'assertive');
+        void trackEvent('attendee_safe_exit_opened', {}, { route: '/attendee' });
         showScreen('exit');
       });
     } else {

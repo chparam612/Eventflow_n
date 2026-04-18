@@ -48,6 +48,7 @@ async function main() {
 
   // Source-level accessibility guard checks for dynamic SPA panels.
   const staffLoginSrc = fs.readFileSync(path.join(__dirname, '../src/panels/staff/login.js'), 'utf8');
+  const staffDashboardSrc = fs.readFileSync(path.join(__dirname, '../src/panels/staff/dashboard.js'), 'utf8');
   const controlLoginSrc = fs.readFileSync(path.join(__dirname, '../src/panels/control/login.js'), 'utf8');
   const controlDashboardSrc = fs.readFileSync(path.join(__dirname, '../src/panels/control/dashboard.js'), 'utf8');
   const attendeeSrc = fs.readFileSync(path.join(__dirname, '../src/panels/attendee/index.js'), 'utf8');
@@ -64,7 +65,10 @@ async function main() {
   mustInclude(controlLoginSrc, 'aria-live="assertive"', 'control login');
   mustInclude(controlDashboardSrc, 'role="dialog"', 'control dashboard emergency modal');
   mustInclude(controlDashboardSrc, 'aria-modal="true"', 'control dashboard emergency modal');
+  mustInclude(staffDashboardSrc, 'role="alertdialog"', 'staff emergency overlay');
+  mustInclude(staffDashboardSrc, 'aria-modal="true"', 'staff emergency overlay');
   mustInclude(attendeeSrc, 'role="radiogroup"', 'attendee exit route options');
+  mustInclude(attendeeSrc, "banner.setAttribute('role', 'alert')", 'attendee emergency banner');
 
   console.log('  ✅ source-level accessibility guard checks');
 }

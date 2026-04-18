@@ -3,6 +3,7 @@
  * Hash-free History API routing with auth guards and lazy panel loading
  */
 import { announce } from '/src/a11y.js';
+import { initGoogleServices, trackEvent } from '/src/firebase.js';
 
 const routes = {
   '/':              () => import('/src/panels/landing.js'),
@@ -153,6 +154,10 @@ async function renderRoute(path) {
     focusRouteHeading(app);
     const routeHeading = app.querySelector('h1, h2')?.textContent?.trim();
     announce(routeHeading ? `Navigated to ${routeHeading}` : `Navigated to ${path}`, 'polite');
+    void trackEvent('route_view', {
+      path,
+      heading: routeHeading || ''
+    }, { route: path });
 
   } catch (e) {
     console.error('[Router] Panel load failed:', e);
@@ -174,6 +179,7 @@ async function renderRoute(path) {
 
 // ─── Init Router ───────────────────────────────────────────────────────────
 export function initRouter() {
+  void initGoogleServices('router');
   window.addEventListener('popstate', () => {
     if (currentUnmount) { try { currentUnmount(); } catch (e) {} currentUnmount = null; }
     renderRoute(window.location.pathname);

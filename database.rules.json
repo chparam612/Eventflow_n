@@ -27,6 +27,18 @@
     "feedback": {
       ".write": "auth != null",
       ".read": "auth != null && auth.token.email.contains('control')"
+    },
+    "analyticsEvents": {
+      ".write": "auth != null",
+      ".read": "auth != null && auth.token.email.contains('control')"
+    },
+    "ingestedTelemetry": {
+      ".read": false,
+      ".write": false
+    },
+    "telemetryExportQueue": {
+      ".read": false,
+      ".write": false
     }
   }
 }

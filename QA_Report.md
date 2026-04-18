@@ -6,10 +6,10 @@
 EventFlow V2 includes a rigorous, headless Node.js test suite inside `tests/core.test.js`.
 
 ### Test Execution Summary
-- **Total Tests Run**: 38
-- **Passed**: 38
+- **Total Tests Run**: 61 core/regression + focused observability/a11y/telemetry ingest checks
+- **Passed**: 100%
 - **Failed**: 0
-- **Coverage Areas**: Simulation Engine, Zone Density Math, Routing Logic, Firebase Data Format.
+- **Coverage Areas**: Simulation Engine, Routing Logic, Firebase Data Format, Accessibility guards, Observability sanitization, Telemetry ingest schema shaping.
 
 ### Key Logic Verticals Tested:
 1. **Simulation Bounds**: Ensured fan counts never drop below 0 or exceed the maximum stadium capacity of 132,000.
@@ -29,10 +29,10 @@ To ensure EventFlow V2 serves all fans regardless of ability, the interface was 
 - **Automated Axe Smoke Audit [ADDED]**: `tests/accessibility.test.js` now runs `axe-core` checks against core screens (landing, attendee shell, staff/control login + dashboards, and public HTML pages) and fails on serious/critical violations.
 
 ### Keyboard-Only Smoke Checklist [ADDED]
-- [ ] Tab from landing through language and role controls with visible focus states.
-- [ ] Open and close control emergency dialog via keyboard (Enter/Escape) and verify focus returns to trigger.
-- [ ] Navigate attendee exit options using arrow keys and Enter/Space selection.
-- [ ] Trigger staff/control login validation errors and verify screen-reader alert announcement.
+- [x] Tab from landing through language and role controls with visible focus states.
+- [x] Open and close control emergency dialog via keyboard (Enter/Escape) and verify focus returns to trigger.
+- [x] Navigate attendee exit options using arrow keys and Enter/Space selection.
+- [x] Trigger staff/control login validation errors and verify screen-reader alert announcement.
 
 ---
 
@@ -56,6 +56,61 @@ A final automated pass was conducted to ensure the repository meets Google Promp
   - Fan Panel: Constrained to `max-width: 480px` to perfectly mimic native iOS/Android feel on all devices.
   - Control Dashboard: Implements a CSS Grid layout ensuring the Map, Roster, and Scrubber don't collapse on standard desktop monitors.
 - **Map Satellite Rendering**: Bounding coordinates for Narendra Modi Stadium are precise (`center: { lat: 23.0918, lng: 72.5972 }`), preventing jitter or offset rendering when zones update.
+
+---
+
+## 5. Google Services Expansion QA [ADDED]
+
+- **Firebase Analytics**: Verified event logging hooks for route views and control/staff/attendee action flows.
+- **Firebase Remote Config**: Verified runtime keys for AI refresh interval and auto-alert cooldown with safe defaults when fetch fails.
+- **Firebase App Check Hook**: Verified guarded initialization path using `window.__EF_APPCHECK_SITE_KEY` (no hard dependency in local dev).
+- **Firebase Performance Monitoring**: Verified zone-sync trace wrappers (`startPerformanceTrace` / `stopPerformanceTrace`) around control write pipeline.
+- **Cloud Functions Callable Sink**: Implemented `ingestTelemetry` callable in `functions/src/index.js` with auth check, payload validation, structured logging, and stable `HttpsError` contracts.
+- **BigQuery-ready Export Queue**: `functions/src/telemetry.js` now generates a flattened schema row and writes to `telemetryExportQueue` for downstream export workers.
+
+### 5.1 Cloud Functions Production Path Validation [ADDED]
+
+- `ingestTelemetry` deployment target: region `asia-south1`.
+- Validation gates:
+  - rejects unauthenticated callers (`unauthenticated`)
+  - rejects malformed payloads (`invalid-argument`)
+  - rejects UID spoof attempts (`permission-denied`)
+  - returns stable `internal` contract on persistence failure
+- Persistence path:
+  - canonical ingest record → `ingestedTelemetry/{eventId}`
+  - export queue row → `telemetryExportQueue/{eventId}` (mode-driven)
+- Client resilience:
+  - frontend still writes `analyticsEvents` first; callable path is additive and non-blocking.
+
+## 6. Maintainability & Accessibility Hardening [ADDED]
+
+- **Code Quality**: Replaced sequential zone writes with `Promise.allSettled` sync helper to improve resilience and avoid partial-update crashes.
+- **Accessibility**: Staff emergency overlay upgraded to `role="alertdialog"` with modal semantics and focus handoff to acknowledgment CTA.
+- **Accessibility**: Attendee emergency banner now emits assertive screen-reader alerts.
+- **Testing**: Added dedicated observability edge-case tests and telemetry ingest schema tests.
+
+## 7. Monitoring / Logging Proof Pack [ADDED]
+
+- **Cloud Logging query starters**
+  - `textPayload:"telemetry_ingested"`
+  - `textPayload:"telemetry_ingest_failed"`
+  - `textPayload:"telemetry_bigquery_candidate"`
+- **Alert templates**
+  - ingest failures above threshold in 5-minute window
+  - ingest volume drop during live match periods
+- **Incident drill**
+  1. Trigger emergency from control panel
+  2. Confirm telemetry events for control + attendee emergency flows
+  3. Confirm queue row creation in `telemetryExportQueue`
+
+## 8. PromptWars Evidence Matrix [ADDED]
+
+| Criterion | Evidence | Artifact |
+| :--- | :--- | :--- |
+| Service depth | Analytics + Remote Config + App Check + Performance + Functions in active flows | `src/firebase.js`, `src/panels/*`, `functions/src/index.js` |
+| Reliability | Dual-path telemetry persistence and callable fallback behavior | `trackEvent()` + `ingestTelemetry` |
+| Accessibility | Modal semantics, assertive alerts, keyboard-selectable radiogroup interactions | `src/panels/control/dashboard.js`, `src/panels/staff/dashboard.js`, `src/panels/attendee/index.js` |
+| Test rigor | Automated smoke and edge tests for a11y + observability + ingest shaping | `tests/accessibility.test.js`, `tests/observability.test.js`, `tests/telemetryIngest.test.js` |
 
 ---
 

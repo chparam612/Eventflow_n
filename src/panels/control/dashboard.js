@@ -5,7 +5,8 @@
 import { getCurrentUser, isControlUser, logout } from '/src/auth.js';
 import {
   writeZone, pushInstruction, pushNudge,
-  listenZones, listenAllStaff, listenEmergency, setEmergencyStatus
+  listenZones, listenAllStaff, listenEmergency, setEmergencyStatus,
+  trackEvent, getNumberConfig, getBooleanConfig, startPerformanceTrace, stopPerformanceTrace
 } from '/src/firebase.js';
 import {
   simulateTick, setTick, getTick, getTickLabel,
@@ -427,10 +428,14 @@ export async function init(navigate) {
   // ── Auth guard ──
   const user = await getCurrentUser();
   if (!user || !isControlUser(user)) { navigate('/control-login'); return; }
+  void trackEvent('control_session_started', { uidPrefix: user.uid?.slice(0, 6) || 'unknown' }, { route: '/control' });
 
   let currentEmergency = { active: false };
   let densities = {}; // TASK 1: Declare shared densities object
   let heatmapEnabled = true; // Default ON
+  const autoAlertCooldownMs = getNumberConfig('auto_alert_cooldown_ms', 300000, 60000, 1800000);
+  const aiRefreshIntervalMs = getNumberConfig('ai_insights_interval_ms', 120000, 30000, 300000);
+  const enableSyncTracing = getBooleanConfig('perf_zone_sync_trace_enabled', false);
 
   // ── DOM refs ──
   const scrubber   = document.getElementById('ctrl-scrubber');
@@ -795,7 +800,7 @@ export async function init(navigate) {
       // Only alert if not alerted in last 5 minutes
       const lastAlert = sessionStorage.getItem('alert:'+zone.id);
       const now = Date.now();
-      if (lastAlert && now - parseInt(lastAlert) < 300000) continue;
+      if (lastAlert && now - parseInt(lastAlert) < autoAlertCooldownMs) continue;
       
       sessionStorage.setItem('alert:'+zone.id, now.toString());
       
@@ -811,8 +816,23 @@ export async function init(navigate) {
         zone.id,
         `${name} is getting crowded. Alternative routes are available nearby.`
       );
+      void trackEvent('auto_alert_triggered', {
+        zoneId: zone.id,
+        densityPct: pct
+      }, { route: '/control' });
       
       console.log('Auto-alert sent for:', name, pct + '%');
+    }
+  }
+
+  async function syncZonesToFirebase(nextDensities) {
+    const perfTrace = enableSyncTracing ? startPerformanceTrace('sync_zones') : null;
+    const writes = Object.entries(nextDensities).map(([id, d]) =>
+      writeZone(id, d, getZoneStatus(d))
+    );
+    await Promise.allSettled(writes);
+    if (perfTrace) {
+      stopPerformanceTrace(perfTrace, { zoneCount: writes.length });
     }
   }
 
@@ -857,10 +877,7 @@ export async function init(navigate) {
     if (timeLabel) timeLabel.textContent = getTickLabel();
     if (ctrlTimeEl) ctrlTimeEl.textContent = getTickLabel();
 
-    // Write to Firebase
-    for (const [id, d] of Object.entries(densities)) {
-      await writeZone(id, d, getZoneStatus(d));
-    }
+    await syncZonesToFirebase(densities);
 
     await autoAlertCheck(densities);
   }
@@ -890,9 +907,7 @@ export async function init(navigate) {
     updateMetrics(densities);
     renderAlerts(densities);
     renderPredictiveAlerts(predictions);
-    for (const [id, d] of Object.entries(densities)) {
-      await writeZone(id, d, getZoneStatus(d));
-    }
+    await syncZonesToFirebase(densities);
   });
 
   // ── Firebase: listen zones ──
@@ -926,6 +941,10 @@ export async function init(navigate) {
     if (currentEmergency.active) {
       if (confirm('Clear active emergency and restore normal operations?')) {
         setEmergencyStatus(false);
+        void trackEvent('emergency_cleared', {
+          zoneId: currentEmergency.zone || 'unknown',
+          type: currentEmergency.type || 'unknown'
+        }, { route: '/control' });
       }
     } else {
       emergencyDialog.open(emergBtn);
@@ -946,6 +965,10 @@ export async function init(navigate) {
       
       emergencyDialog.close();
       await setEmergencyStatus(true, type, zone);
+      void trackEvent('emergency_activated', {
+        zoneId: zone,
+        type
+      }, { route: '/control' });
       announce(`Emergency mode activated for ${name}`, 'assertive');
       
       // TASK 6: Logging
@@ -1051,6 +1074,10 @@ export async function init(navigate) {
     const msg  = document.getElementById('ctrl-instr-text')?.value?.trim();
     if (!msg) return;
     await pushInstruction(zone, msg, user.email);
+    void trackEvent('control_instruction_sent', {
+      zoneId: zone,
+      chars: msg.length
+    }, { route: '/control' });
     const conf = document.getElementById('ctrl-send-confirm');
     if (conf) { conf.style.display = 'block'; setTimeout(() => conf.style.display = 'none', 2500); }
     document.getElementById('ctrl-instr-text').value = '';
@@ -1063,6 +1090,10 @@ export async function init(navigate) {
     const msg  = document.getElementById('ctrl-instr-text')?.value?.trim()
               || 'Please move toward Gate ' + (ZONES[zone]?.gate || 'B') + ' to reduce crowding.';
     await pushNudge(zone, msg);
+    void trackEvent('control_nudge_sent', {
+      zoneId: zone,
+      chars: msg.length
+    }, { route: '/control' });
     nudgesSent++;
     if (metricNudges) metricNudges.textContent = nudgesSent;
     const conf = document.getElementById('ctrl-send-confirm');
@@ -1073,12 +1104,18 @@ export async function init(navigate) {
   // ── AI Insights (immediately + every 2 min) ──
   const { getZoneDensity: gzd } = await import('/src/simulation.js');
   renderAIInsights(gzd());
-  aiInterval = setInterval(() => renderAIInsights(gzd()), 120000);
+  aiInterval = setInterval(() => renderAIInsights(gzd()), aiRefreshIntervalMs);
 
-  document.getElementById('ai-refresh-btn')?.addEventListener('click', () => renderAIInsights(gzd()));
+  document.getElementById('ai-refresh-btn')?.addEventListener('click', () => {
+    void trackEvent('control_ai_refresh_clicked', {}, { route: '/control' });
+    renderAIInsights(gzd());
+  });
 
   // ── Logout ──
-  document.getElementById('ctrl-logout-btn')?.addEventListener('click', () => logout());
+  document.getElementById('ctrl-logout-btn')?.addEventListener('click', () => {
+    void trackEvent('control_session_ended', {}, { route: '/control' });
+    logout();
+  });
 
   // ── Cleanup ──
   return () => {
