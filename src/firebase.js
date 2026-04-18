@@ -7,15 +7,6 @@ import {
   getDatabase, ref, set, push, onValue,
   query, orderByChild, equalTo, limitToLast, off
 } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
-import { getAnalytics, isSupported as analyticsSupported, logEvent } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js';
-import {
-  getRemoteConfig, isSupported as remoteConfigSupported,
-  fetchAndActivate, getValue
-} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-remote-config.js';
-import { initializeAppCheck, ReCaptchaV3Provider } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app-check.js';
-import { getPerformance, isSupported as performanceSupported, trace } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-performance.js';
-import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js';
-import { buildTelemetryRecord, sanitizeTelemetryParams, toBooleanSetting, toNumberSetting } from '/src/observability.js';
 
 // ─── Firebase Config ───────────────────────────────────────────────────────
 // Replace with your actual Firebase project config
@@ -34,21 +25,12 @@ const firebaseConfig = {
 // ─── App Init ──────────────────────────────────────────────────────────────
 export const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-let analytics = null;
-let remoteConfig = null;
-let performance = null;
-let ingestTelemetryFn = null;
-let googleServicesInitPromise = null;
-
-const REMOTE_CONFIG_DEFAULTS = {
-  ai_insights_interval_ms: '120000',
-  auto_alert_cooldown_ms: '300000',
-  telemetry_sink: 'database',
-  perf_zone_sync_trace_enabled: 'false'
-};
+const CLOUD_BACKEND_BASE = (typeof window !== 'undefined' && window.__EF_CLOUD_BACKEND_BASE__) || '';
+let _cloudEndpointWarned = false;
 
 // ─── Write Guard — prevents infinite recursion loops ──────────────────────
 const _writing = new Set();
+const _activeListeners = new Map();
 
 async function safeWrite(key, fn) {
   if (_writing.has(key)) return;
@@ -62,122 +44,72 @@ async function safeWrite(key, fn) {
   }
 }
 
-async function initRemoteConfig() {
-  const supported = await remoteConfigSupported();
-  if (!supported) return null;
-  remoteConfig = getRemoteConfig(app);
-  remoteConfig.defaultConfig = REMOTE_CONFIG_DEFAULTS;
-  remoteConfig.settings.minimumFetchIntervalMillis = 60000;
-  await fetchAndActivate(remoteConfig).catch(() => {});
-  return remoteConfig;
-}
-
-async function initAnalytics() {
-  const supported = await analyticsSupported();
-  if (!supported) return null;
-  analytics = getAnalytics(app);
-  return analytics;
-}
-
-async function initPerformance() {
-  const supported = await performanceSupported();
-  if (!supported) return null;
-  performance = getPerformance(app);
-  return performance;
-}
-
-function initAppCheckIfConfigured() {
-  const siteKey = window.__EF_APPCHECK_SITE_KEY || '';
-  if (!siteKey) return;
-  initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(siteKey),
-    isTokenAutoRefreshEnabled: true
-  });
-}
-
-function initFunctionsSink() {
-  try {
-    const region = window.__EF_FUNCTIONS_REGION || 'asia-south1';
-    const functions = getFunctions(app, region);
-    ingestTelemetryFn = httpsCallable(functions, 'ingestTelemetry');
-  } catch (e) {
-    ingestTelemetryFn = null;
+function registerListener(key, targetRef, handler) {
+  const existing = _activeListeners.get(key);
+  if (existing?.targetRef) {
+    try { off(existing.targetRef); } catch (_) {}
   }
+  onValue(targetRef, handler);
+  _activeListeners.set(key, { targetRef });
+  return () => {
+    const current = _activeListeners.get(key);
+    if (current?.targetRef === targetRef) {
+      try { off(targetRef); } catch (_) {}
+      _activeListeners.delete(key);
+      return;
+    }
+    try { off(targetRef); } catch (_) {}
+  };
 }
 
-export function getConfigValue(key, fallback = '') {
-  if (!remoteConfig) return fallback;
+async function writeAuditTrail(action, payload = {}, actor = 'system') {
   try {
-    const val = getValue(remoteConfig, key)?.asString?.() ?? '';
-    return val === '' ? fallback : val;
-  } catch (e) {
-    return fallback;
-  }
+    await push(ref(db, 'auditTrail'), {
+      action,
+      actor,
+      payload,
+      timestamp: Date.now()
+    });
+  } catch (_) {}
 }
 
-export function getNumberConfig(key, fallback, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY) {
-  return toNumberSetting(getConfigValue(key, fallback), fallback, min, max);
-}
-
-export function getBooleanConfig(key, fallback = false) {
-  return toBooleanSetting(getConfigValue(key, String(fallback)), fallback);
-}
-
-export async function initGoogleServices(source = 'app') {
-  if (googleServicesInitPromise) return googleServicesInitPromise;
-  googleServicesInitPromise = (async () => {
-    initAppCheckIfConfigured();
-    initFunctionsSink();
-    await Promise.allSettled([
-      initRemoteConfig(),
-      initAnalytics(),
-      initPerformance()
-    ]);
-    void trackEvent('google_services_initialized', { source }, { route: '/' });
-  })();
-  return googleServicesInitPromise;
-}
-
-export function startPerformanceTrace(name) {
-  if (!performance || !name) return null;
+export async function pushAnalyticsEvent(type, payload = {}) {
   try {
-    const t = trace(performance, String(name).slice(0, 80));
-    t.start();
-    return t;
-  } catch (e) {
+    const event = {
+      type,
+      payload,
+      source: 'eventflow-web',
+      timestamp: Date.now()
+    };
+    await push(ref(db, 'analytics/events'), event);
+    return event;
+  } catch (_) {
     return null;
   }
 }
 
-export function stopPerformanceTrace(perfTrace, attributes = {}) {
-  if (!perfTrace) return;
-  try {
-    const sanitized = sanitizeTelemetryParams(attributes);
-    for (const [key, value] of Object.entries(sanitized)) {
-      perfTrace.putAttribute(key, String(value));
-    }
-    perfTrace.stop();
-  } catch (e) {}
+export async function pushPerformanceMetric(name, value, context = {}) {
+  return pushAnalyticsEvent('performance_metric', { name, value, ...context });
 }
 
-export async function trackEvent(eventName, params = {}, context = {}) {
-  const record = buildTelemetryRecord(eventName, params, context);
+export async function invokeCloudWorkflow(route, payload = {}) {
+  if (!CLOUD_BACKEND_BASE) {
+    if (!_cloudEndpointWarned) {
+      _cloudEndpointWarned = true;
+      console.info('[Firebase] Cloud workflow endpoint is not configured; using local fallback only.');
+    }
+    return null;
+  }
   try {
-    const tasks = [push(ref(db, 'analyticsEvents'), record)];
-    if (analytics) {
-      logEvent(analytics, record.eventName, sanitizeTelemetryParams(record.params));
-    }
-    const useFunctions =
-      context.forceFunctions ||
-      getConfigValue('telemetry_sink', 'database') === 'functions';
-    if (useFunctions && ingestTelemetryFn) {
-      tasks.push(ingestTelemetryFn(record));
-    }
-    await Promise.allSettled(tasks);
-  } catch (e) {
-    if (!String(e?.message || '').includes('permission_denied')) {
-      console.warn('[Firebase] telemetry failed:', e.message || e);
-    }
+    const res = await fetch(`${CLOUD_BACKEND_BASE}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) {
+    return null;
   }
 }
 
@@ -199,21 +131,26 @@ export async function writeStaffStatus(uid, zone, status, online = true) {
       zone,
       status,
       online,
+      updatedBy: uid,
       updatedAt: Date.now()
     })
   );
+  await writeAuditTrail('staff_status_updated', { uid, zone, status, online }, uid);
 }
 
 export async function pushInstruction(zoneId, message, sentBy) {
-  await safeWrite('instr:' + zoneId + ':' + Date.now(), () =>
-    push(ref(db, 'instructions'), {
+  const key = 'instr:' + zoneId + ':' + Date.now();
+  await safeWrite(key, async () => {
+    await push(ref(db, 'instructions'), {
       zoneId,
       message,
       sentBy,
       sentAt: Date.now(),
-      acked: []
-    })
-  );
+      acked: {}
+    });
+  });
+  await pushAnalyticsEvent('instruction_dispatched', { zoneId, sentBy, messageLength: message.length });
+  await writeAuditTrail('instruction_dispatched', { zoneId, message }, sentBy || 'unknown');
 }
 
 export async function pushNudge(zoneId, message) {
@@ -224,6 +161,32 @@ export async function pushNudge(zoneId, message) {
       sentAt: Date.now()
     })
   );
+  await pushAnalyticsEvent('attendee_nudge_sent', { zoneId, messageLength: message.length });
+}
+
+export async function pushStaffReport(uid, zoneId, type, message = '') {
+  await safeWrite('staff_report:' + uid + ':' + Date.now(), async () => {
+    await push(ref(db, 'staffReports'), {
+      uid,
+      zoneId,
+      type,
+      message,
+      createdAt: Date.now()
+    });
+  });
+  await pushAnalyticsEvent('staff_quick_report', { uid, zoneId, type });
+  await writeAuditTrail('staff_report_submitted', { uid, zoneId, type }, uid);
+}
+
+export async function ackInstruction(instructionId, staffUid, zoneId) {
+  if (!instructionId || !staffUid) return;
+  const ackAt = Date.now();
+  await safeWrite('ack:' + instructionId + ':' + staffUid, async () => {
+    await set(ref(db, `instructions/${instructionId}/acked/${staffUid}`), ackAt);
+  });
+  await pushAnalyticsEvent('instruction_acknowledged', { instructionId, staffUid, zoneId, ackAt });
+  await writeAuditTrail('instruction_acknowledged', { instructionId, zoneId, ackAt }, staffUid);
+  await invokeCloudWorkflow('/instructionAck', { instructionId, staffUid, zoneId, ackAt });
 }
 
 export async function saveAttendeeData(uid, data) {
@@ -240,10 +203,6 @@ export async function saveFeedback(data) {
     await push(ref(db, 'feedback'), {
       ...data,
       submittedAt: Date.now()
-    });
-    await trackEvent('feedback_submitted', {
-      rating: data?.rating || 0,
-      helpfulness: data?.helpfulness || 'na'
     });
   } catch (e) {
     console.warn('[Firebase] Feedback save failed:', e.message);
@@ -269,44 +228,45 @@ export async function setEmergencyStatus(active, type = null, zone = null) {
 
 export function listenZones(cb) {
   const r = ref(db, 'zones');
-  onValue(r, snap => cb(snap.val() || {}));
-  return () => off(r);
+  return registerListener('zones:global', r, snap => cb(snap.val() || {}));
 }
 
-export function listenInstructions(zoneId, cb) {
+export function listenInstructions(zoneId, cb, options = {}) {
+  const limit = Math.max(1, Math.min(30, options.limit || 10));
+  const since = options.since || 0;
   const q = query(
     ref(db, 'instructions'),
     orderByChild('zoneId'),
     equalTo(zoneId),
-    limitToLast(10)
+    limitToLast(limit)
   );
-  onValue(q, snap => {
+  return registerListener('instructions:' + zoneId, q, snap => {
     const items = [];
-    snap.forEach(c => items.push({ id: c.key, ...c.val() }));
+    snap.forEach(c => {
+      const row = { id: c.key, ...c.val() };
+      if (!since || (row.sentAt || 0) >= since) items.push(row);
+    });
     if (cb) cb(items.reverse());
   });
-  return () => off(q);
 }
 
 export function listenNudges(cb) {
   const q = query(ref(db, 'nudges'), limitToLast(5));
-  onValue(q, snap => {
+  return registerListener('nudges:global', q, snap => {
     const items = [];
     snap.forEach(c => items.push({ id: c.key, ...c.val() }));
     if (cb) cb(items.reverse());
   });
-  return () => off(q);
 }
 
 export function listenAllStaff(cb) {
   const r = ref(db, 'staff');
-  onValue(r, snap => cb(snap.val() || {}));
-  return () => off(r);
+  return registerListener('staff:all', r, snap => cb(snap.val() || {}));
 }
 
 export function listenEmergency(cb) {
   const r = ref(db, 'emergency/status');
-  onValue(r, snap => {
+  return registerListener('emergency:status', r, snap => {
     const val = snap.val();
     if (!val) {
       // Initialize if missing
@@ -316,5 +276,4 @@ export function listenEmergency(cb) {
       cb(val);
     }
   });
-  return () => off(r);
 }

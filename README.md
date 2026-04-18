@@ -80,6 +80,40 @@ Three panels, one live data loop — every action in the control room reflects i
 
 ---
 
+## ✅ What improved (downgrade-risk hardening)
+
+- **Cloud workflow hooks added**
+  - Added backend workflow endpoints scaffold under `/functions/index.js` for:
+    - instruction ACK validation
+    - emergency activation validation
+    - surge risk classification
+  - Frontend now calls cloud workflow routes opportunistically (`invokeCloudWorkflow` / `invokeCloudEndpoint`) with safe fallback.
+
+- **BigQuery-ready analytics events**
+  - Added structured event stream at `analytics/events` with typed payloads + timestamps.
+  - Added `buildBigQueryEvent(...)` event-shaping helper for warehouse-friendly exports.
+
+- **Realtime reliability**
+  - Staff instruction ACK is now **backend-persisted** (`instructions/{id}/acked/{uid}`), not UI-only.
+  - Staff quick reports are now persisted in `staffReports`.
+  - Firebase listener registry now prevents duplicate same-scope listeners.
+
+- **Performance efficiency**
+  - Control dashboard rendering now uses **throttled UI refresh** (`1000ms`) to reduce repaint churn.
+  - Zone writes now use parallelized async writes (`Promise.all`) during ticks.
+  - Attendee panel reduced frequent polling from **5s to 15s fallback**, with listener-driven updates.
+  - Added runtime performance metrics (`*_init_ms`, update lag) into analytics stream.
+
+- **Security hardening**
+  - Database rules upgraded with stricter role checks and validation for:
+    - instruction ACK writes (staff UID + zone match)
+    - staff reports
+    - analytics events
+    - audit trail records
+  - Added `auditTrail` writes for critical actions (instruction dispatch, ACK, staff report/status updates).
+
+---
+
 ## ⚙️ How the Solution Works
 
 ```

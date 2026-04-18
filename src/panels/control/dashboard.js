@@ -6,18 +6,19 @@ import { getCurrentUser, isControlUser, logout } from '/src/auth.js';
 import {
   writeZone, pushInstruction, pushNudge,
   listenZones, listenAllStaff, listenEmergency, setEmergencyStatus,
-  trackEvent, getNumberConfig, getBooleanConfig, startPerformanceTrace, stopPerformanceTrace
+  pushAnalyticsEvent, pushPerformanceMetric, invokeCloudWorkflow
 } from '/src/firebase.js';
 import {
   simulateTick, setTick, getTick, getTickLabel,
-  getZoneDensity, getZoneStatus, getStatusColor, ZONES
+  getZoneDensity, getZoneStatus, ZONES
 } from '/src/simulation.js';
 import { getAIInsights } from '/src/gemini.js';
 import { predictFutureDensity, detectSurgeRisk } from '/src/predictiveEngine.js';
 import { rankBestExit } from '/src/evacuationEngine.js';
 import { calculateDensityColor } from '/src/heatmapEngine.js';
 import { calculateTotalVisitors, calculateAverageDensity, findPeakZone, calculateGateUtilization, estimateAverageWaitTime } from '/src/analyticsEngine.js';
-import { announce, createDialogController } from '/src/a11y.js';
+import { calculateEvacuationRoutes, getEmergencyMessage } from '/src/emergencyEngine.js';
+import { buildBigQueryEvent, classifySurgeRisk, invokeCloudEndpoint } from '/src/cloudServices.js';
 
 // NMS approximate bounding coords for each zone overlay
 const ZONE_BOUNDS = {
@@ -37,7 +38,6 @@ let simInterval = null;
 let aiInterval = null;
 let nudgesSent = 0;
 let cleanupFirebase = [];
-const FALLBACK_ZONE = 'north';
 
 export function render() {
   return `
@@ -276,10 +276,7 @@ export function render() {
             color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
             📡 Dispatch</div>
 
-          <label for="ctrl-zone-sel" style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px;">
-            Select target zone
-          </label>
-          <select id="ctrl-zone-sel" aria-label="Select zone for dispatch" style="width:100%;margin-bottom:8px;font-size:0.85rem;">
+          <select id="ctrl-zone-sel" aria-label="Select target zone for dispatch" style="width:100%;margin-bottom:8px;font-size:0.85rem;">
             ${Object.entries(ZONES).map(([id, z]) =>
               `<option value="${id}">${z.name}</option>`).join('')}
           </select>
@@ -300,10 +297,7 @@ export function render() {
             `).join('')}
           </div>
 
-          <label for="ctrl-instr-text" style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px;">
-            Instruction text
-          </label>
-          <textarea id="ctrl-instr-text" aria-label="Custom instruction text" placeholder="Custom instruction…" style="
+          <textarea id="ctrl-instr-text" aria-label="Custom instruction message for dispatch" placeholder="Custom instruction…" style="
             width:100%;height:60px;resize:none;margin-bottom:8px;
             font-size:0.85rem;"></textarea>
 
@@ -322,7 +316,7 @@ export function render() {
               📲 Nudge Fans
             </button>
           </div>
-          <div id="ctrl-send-confirm" role="status" aria-live="polite" aria-atomic="true" style="
+          <div id="ctrl-send-confirm" style="
             font-size:0.78rem;color:#00C49A;margin-top:6px;display:none;">
             ✓ Sent successfully</div>
         </div>
@@ -376,14 +370,6 @@ export function render() {
       background:#00C49A;cursor:pointer;border:2px solid #060A10;
     }
     .quick-instr-btn:hover { border-color:rgba(255,107,53,0.4)!important;background:rgba(255,107,53,0.06)!important; }
-    .staff-zone-select:focus-visible,
-    .dispatch-from-alert:focus-visible,
-    #ctrl-emergency-btn:focus-visible,
-    #emerg-confirm:focus-visible,
-    #emerg-cancel:focus-visible {
-      outline: 2px solid #00C49A;
-      outline-offset: 2px;
-    }
     
     /* Emergency Modal Overlay */
     #emerg-modal-overlay {
@@ -401,8 +387,8 @@ export function render() {
       <p id="emerg-modal-desc" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px;">This will block the selected zone and immediately alert all staff and attendees.</p>
       
       <div style="margin-bottom:16px;">
-        <label for="emerg-type-sel" style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Type</label>
-        <select id="emerg-type-sel" aria-label="Emergency type" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
+        <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Type</label>
+        <select id="emerg-type-sel" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
           <option value="FIRE">🔥 FIRE</option>
           <option value="SECURITY">👮 SECURITY THREAT</option>
           <option value="MEDICAL">🚑 MASS MEDICAL INCIDENT</option>
@@ -410,8 +396,8 @@ export function render() {
       </div>
       
       <div style="margin-bottom:24px;">
-        <label for="emerg-zone-sel" style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Blocked Zone</label>
-        <select id="emerg-zone-sel" aria-label="Blocked emergency zone" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
+        <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Blocked Zone</label>
+        <select id="emerg-zone-sel" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
           ${Object.entries(ZONES).map(([id, z]) => `<option value="${id}">${z.name}</option>`).join('')}
         </select>
       </div>
@@ -428,14 +414,11 @@ export async function init(navigate) {
   // ── Auth guard ──
   const user = await getCurrentUser();
   if (!user || !isControlUser(user)) { navigate('/control-login'); return; }
-  void trackEvent('control_session_started', { uidPrefix: user.uid?.slice(0, 6) || 'unknown' }, { route: '/control' });
 
   let currentEmergency = { active: false };
   let densities = {}; // TASK 1: Declare shared densities object
   let heatmapEnabled = true; // Default ON
-  const autoAlertCooldownMs = getNumberConfig('auto_alert_cooldown_ms', 300000, 60000, 1800000);
-  const aiRefreshIntervalMs = getNumberConfig('ai_insights_interval_ms', 120000, 30000, 300000);
-  const enableSyncTracing = getBooleanConfig('perf_zone_sync_trace_enabled', false);
+  let lastZoneSnapshotHash = '';
 
   // ── DOM refs ──
   const scrubber   = document.getElementById('ctrl-scrubber');
@@ -444,6 +427,38 @@ export async function init(navigate) {
   const totalEl    = document.getElementById('ctrl-total');
   const metricAvg  = document.getElementById('metric-avg');
   const metricNudges = document.getElementById('metric-nudges');
+  const dashboardInitStart = performance.now();
+
+  function throttle(fn, waitMs = 800) {
+    let last = 0;
+    let timeout = null;
+    let queuedArgs = null;
+    const run = () => {
+      timeout = null;
+      last = Date.now();
+      fn(...(queuedArgs || []));
+      queuedArgs = null;
+    };
+    return (...args) => {
+      queuedArgs = args;
+      const now = Date.now();
+      const remaining = waitMs - (now - last);
+      if (remaining <= 0) {
+        if (timeout) clearTimeout(timeout);
+        run();
+      } else if (!timeout) {
+        timeout = setTimeout(run, remaining);
+      }
+    };
+  }
+
+  const refreshLiveUI = throttle((liveDensities, predictions) => {
+    updateMapOverlays(liveDensities, predictions);
+    updateMetrics(liveDensities);
+    renderAlerts(liveDensities);
+    renderPredictiveAlerts(predictions);
+    updateAnalyticsDashboard(liveDensities);
+  }, 1000);
 
   // ── Helpers ──
   function getInsightColor(type) {
@@ -504,10 +519,12 @@ export async function init(navigate) {
       const zone = ZONES[s.zone]?.name || s.zone || 'Unknown';
       const ago = s.updatedAt ? Math.round((Date.now() - s.updatedAt) / 60000) : '?';
       return `
-        <button type="button" class="staff-zone-select" data-zone="${s.zone || FALLBACK_ZONE}" style="
-          width:100%;text-align:left;
+        <button type="button" style="
           background:var(--bg-card2);border:1px solid var(--border);
-          border-radius:10px;padding:10px 12px;cursor:pointer;transition:all 0.2s;"
+          border-radius:10px;padding:10px 12px;cursor:pointer;transition:all 0.2s;
+          width:100%;text-align:left;" class="staff-row-select"
+          data-zone="${s.zone || 'north'}"
+          title="Click to dispatch to ${zone}"
           aria-label="Select ${zone} for dispatch">
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="width:7px;height:7px;border-radius:50%;
@@ -521,14 +538,10 @@ export async function init(navigate) {
           </div>
         </button>`;
     }).join('');
-
-    el.querySelectorAll('.staff-zone-select').forEach(btn => {
+    el.querySelectorAll('.staff-row-select').forEach(btn => {
       btn.addEventListener('click', () => {
         const zel = document.getElementById('ctrl-zone-sel');
-        if (zel) {
-          zel.value = btn.dataset.zone || FALLBACK_ZONE;
-          announce(`Dispatch zone set to ${ZONES[zel.value]?.name || zel.value}`, 'polite');
-        }
+        if (zel) zel.value = btn.dataset.zone || 'north';
       });
     });
   }
@@ -800,7 +813,7 @@ export async function init(navigate) {
       // Only alert if not alerted in last 5 minutes
       const lastAlert = sessionStorage.getItem('alert:'+zone.id);
       const now = Date.now();
-      if (lastAlert && now - parseInt(lastAlert) < autoAlertCooldownMs) continue;
+      if (lastAlert && now - parseInt(lastAlert) < 300000) continue;
       
       sessionStorage.setItem('alert:'+zone.id, now.toString());
       
@@ -816,23 +829,15 @@ export async function init(navigate) {
         zone.id,
         `${name} is getting crowded. Alternative routes are available nearby.`
       );
-      void trackEvent('auto_alert_triggered', {
+      await pushAnalyticsEvent('auto_alert_dispatched', buildBigQueryEvent('auto_alert_dispatched', {
         zoneId: zone.id,
-        densityPct: pct
-      }, { route: '/control' });
+        zoneName: name,
+        densityPercent: pct,
+        riskClass: classifySurgeRisk(zone.density, pct)
+      }));
+      await invokeCloudEndpoint('/classifySurge', { zoneId: zone.id, densityPercent: pct });
       
       console.log('Auto-alert sent for:', name, pct + '%');
-    }
-  }
-
-  async function syncZonesToFirebase(nextDensities) {
-    const perfTrace = enableSyncTracing ? startPerformanceTrace('sync_zones') : null;
-    const writes = Object.entries(nextDensities).map(([id, d]) =>
-      writeZone(id, d, getZoneStatus(d))
-    );
-    await Promise.allSettled(writes);
-    if (perfTrace) {
-      stopPerformanceTrace(perfTrace, { zoneCount: writes.length });
     }
   }
 
@@ -861,10 +866,7 @@ export async function init(navigate) {
   async function doTick() {
     const densities = simulateTick();
     const predictions = calculatePredictions(densities);
-    updateMapOverlays(densities, predictions);
-    updateMetrics(densities);
-    renderAlerts(densities);
-    renderPredictiveAlerts(predictions);
+    refreshLiveUI(densities, predictions);
 
     // Update scrubber
     const tick = getTick();
@@ -877,7 +879,8 @@ export async function init(navigate) {
     if (timeLabel) timeLabel.textContent = getTickLabel();
     if (ctrlTimeEl) ctrlTimeEl.textContent = getTickLabel();
 
-    await syncZonesToFirebase(densities);
+    // Write to Firebase
+    await Promise.all(Object.entries(densities).map(([id, d]) => writeZone(id, d, getZoneStatus(d))));
 
     await autoAlertCheck(densities);
   }
@@ -903,27 +906,33 @@ export async function init(navigate) {
       import('/src/simulation.js').then(m => res(m.getZoneDensity()));
     });
     const predictions = calculatePredictions(densities);
-    updateMapOverlays(densities, predictions);
-    updateMetrics(densities);
-    renderAlerts(densities);
-    renderPredictiveAlerts(predictions);
-    await syncZonesToFirebase(densities);
+    refreshLiveUI(densities, predictions);
+    await Promise.all(Object.entries(densities).map(([id, d]) => writeZone(id, d, getZoneStatus(d))));
   });
 
   // ── Firebase: listen zones ──
   const unListenZones = listenZones((zones) => {
     // TASK 1: Populate densities with fallback
     if (!zones) zones = {};
-    Object.entries(zones).forEach(([id, z]) => { 
+    Object.entries(zones).forEach(([id, z]) => {
       densities[id] = z.density || 0; 
     });
+
+    const snapshotHash = JSON.stringify(densities);
+    if (snapshotHash === lastZoneSnapshotHash) return;
+    lastZoneSnapshotHash = snapshotHash;
+
+    const updateLagSamples = Object.values(zones)
+      .map(z => Date.now() - (z?.updatedAt || Date.now()))
+      .filter(v => Number.isFinite(v) && v >= 0);
+    if (updateLagSamples.length) {
+      const avgLagMs = Math.round(updateLagSamples.reduce((a, b) => a + b, 0) / updateLagSamples.length);
+      pushPerformanceMetric('control_zone_update_lag_ms', avgLagMs, { zoneCount: Object.keys(zones).length }).catch(() => {});
+    }
     
     if (Object.keys(densities).length > 0) {
       const predictions = calculatePredictions(densities);
-      updateMapOverlays(densities, predictions);
-      updateMetrics(densities);
-      renderAlerts(densities);
-      renderPredictiveAlerts(predictions);
+      refreshLiveUI(densities, predictions);
     }
   });
   cleanupFirebase.push(unListenZones);
@@ -931,31 +940,43 @@ export async function init(navigate) {
   // ── Emergency Actions ──
   const emergBtn = document.getElementById('ctrl-emergency-btn');
   const modal = document.getElementById('emerg-modal-overlay');
-  const emergencyDialog = createDialogController({
-    dialog: modal,
-    onOpen: () => { modal.style.display = 'flex'; },
-    onClose: () => { modal.style.display = 'none'; }
-  });
+  let modalTriggerEl = null;
+  const modalKeyHandler = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setModalOpen(false);
+    }
+  };
+  const setModalOpen = (open) => {
+    if (!modal) return;
+    if (open) {
+      modalTriggerEl = document.activeElement;
+      document.addEventListener('keydown', modalKeyHandler);
+    } else {
+      document.removeEventListener('keydown', modalKeyHandler);
+    }
+    modal.style.display = open ? 'flex' : 'none';
+    modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (open) {
+      const primary = document.getElementById('emerg-confirm');
+      (primary || modal).focus();
+    } else if (modalTriggerEl && typeof modalTriggerEl.focus === 'function') {
+      modalTriggerEl.focus();
+      modalTriggerEl = null;
+    }
+  };
   
   emergBtn?.addEventListener('click', () => {
     if (currentEmergency.active) {
       if (confirm('Clear active emergency and restore normal operations?')) {
         setEmergencyStatus(false);
-        void trackEvent('emergency_cleared', {
-          zoneId: currentEmergency.zone || 'unknown',
-          type: currentEmergency.type || 'unknown'
-        }, { route: '/control' });
       }
     } else {
-      emergencyDialog.open(emergBtn);
+      setModalOpen(true);
     }
   });
 
-  modal?.addEventListener('click', (e) => {
-    if (e.target === modal) emergencyDialog.close();
-  });
-
-  document.getElementById('emerg-cancel')?.addEventListener('click', () => emergencyDialog.close());
+  document.getElementById('emerg-cancel')?.addEventListener('click', () => setModalOpen(false));
   
   document.getElementById('emerg-confirm')?.addEventListener('click', async () => {
     try { // TASK 8: Prevent UI Crash
@@ -963,13 +984,10 @@ export async function init(navigate) {
       const zone = document.getElementById('emerg-zone-sel').value;
       const name = ZONES[zone]?.name || zone;
       
-      emergencyDialog.close();
+      setModalOpen(false);
       await setEmergencyStatus(true, type, zone);
-      void trackEvent('emergency_activated', {
-        zoneId: zone,
-        type
-      }, { route: '/control' });
-      announce(`Emergency mode activated for ${name}`, 'assertive');
+      await invokeCloudWorkflow('/emergencyValidate', { type, zone, activatedBy: user.email });
+      await pushAnalyticsEvent('emergency_activated', { type, zone, activatedBy: user.email });
       
       // TASK 6: Logging
       console.log("Emergency Activated:", type);
@@ -1057,7 +1075,7 @@ export async function init(navigate) {
     const predictions = calculatePredictions(densities);
     updateMapOverlays(densities, predictions);
     updateAnalyticsDashboard(densities);
-  }, 3000);
+  }, 8000);
   cleanupFirebase.push(() => clearInterval(pulseInt));
 
   // ── Quick instruction buttons ──
@@ -1074,14 +1092,10 @@ export async function init(navigate) {
     const msg  = document.getElementById('ctrl-instr-text')?.value?.trim();
     if (!msg) return;
     await pushInstruction(zone, msg, user.email);
-    void trackEvent('control_instruction_sent', {
-      zoneId: zone,
-      chars: msg.length
-    }, { route: '/control' });
+    await pushAnalyticsEvent('manual_staff_dispatch', { zone, sender: user.email, messageLength: msg.length });
     const conf = document.getElementById('ctrl-send-confirm');
     if (conf) { conf.style.display = 'block'; setTimeout(() => conf.style.display = 'none', 2500); }
     document.getElementById('ctrl-instr-text').value = '';
-    announce(`Instruction sent to ${ZONES[zone]?.name || zone}`, 'polite');
   });
 
   // ── Nudge attendees ──
@@ -1090,38 +1104,29 @@ export async function init(navigate) {
     const msg  = document.getElementById('ctrl-instr-text')?.value?.trim()
               || 'Please move toward Gate ' + (ZONES[zone]?.gate || 'B') + ' to reduce crowding.';
     await pushNudge(zone, msg);
-    void trackEvent('control_nudge_sent', {
-      zoneId: zone,
-      chars: msg.length
-    }, { route: '/control' });
+    await pushAnalyticsEvent('manual_attendee_nudge', { zone, sender: user.email, messageLength: msg.length });
     nudgesSent++;
     if (metricNudges) metricNudges.textContent = nudgesSent;
     const conf = document.getElementById('ctrl-send-confirm');
     if (conf) { conf.textContent = '✓ Nudge sent to attendees'; conf.style.display = 'block'; setTimeout(() => { conf.style.display = 'none'; conf.textContent = '✓ Sent successfully'; }, 2500); }
-    announce(`Nudge sent to ${ZONES[zone]?.name || zone}`, 'polite');
   });
 
   // ── AI Insights (immediately + every 2 min) ──
   const { getZoneDensity: gzd } = await import('/src/simulation.js');
   renderAIInsights(gzd());
-  aiInterval = setInterval(() => renderAIInsights(gzd()), aiRefreshIntervalMs);
+  aiInterval = setInterval(() => renderAIInsights(gzd()), 120000);
 
-  document.getElementById('ai-refresh-btn')?.addEventListener('click', () => {
-    void trackEvent('control_ai_refresh_clicked', {}, { route: '/control' });
-    renderAIInsights(gzd());
-  });
+  document.getElementById('ai-refresh-btn')?.addEventListener('click', () => renderAIInsights(gzd()));
 
   // ── Logout ──
-  document.getElementById('ctrl-logout-btn')?.addEventListener('click', () => {
-    void trackEvent('control_session_ended', {}, { route: '/control' });
-    logout();
-  });
+  document.getElementById('ctrl-logout-btn')?.addEventListener('click', () => logout());
+  pushPerformanceMetric('control_dashboard_init_ms', Math.round(performance.now() - dashboardInitStart), { user: user.email }).catch(() => {});
 
   // ── Cleanup ──
   return () => {
+    document.removeEventListener('keydown', modalKeyHandler);
     if (simInterval) clearInterval(simInterval);
     if (aiInterval) clearInterval(aiInterval);
-    emergencyDialog.destroy();
     cleanupFirebase.forEach(fn => { try { fn(); } catch (e) {} });
     cleanupFirebase = [];
     zoneRectangles = {};

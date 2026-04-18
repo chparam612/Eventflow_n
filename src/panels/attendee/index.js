@@ -8,13 +8,12 @@ import {
 } from '/src/simulation.js';
 import { 
   saveAttendeeData, saveFeedback, listenZones, listenNudges, 
-  listenEmergency, trackEvent
+  listenEmergency, pushPerformanceMetric
 } from '/src/firebase.js';
 import { renderAIChat, initAIChat } from './aiChat.js';
 import { rankBestExit } from '/src/evacuationEngine.js';
 import { calculateAverageDensity } from '/src/analyticsEngine.js';
 import { loginAnonymously } from '/src/auth.js';
-import { makeSelectableList, announce } from '/src/a11y.js';
 
 // ─── State ────────────────────────────────────────────────────────────────
 let screen = 'intake';
@@ -23,8 +22,6 @@ let answers = {};
 let currentDensities = {};
 let cleanupFns = [];
 let nudgeShown = false;
-const DEFAULT_EXIT_ID = 'now';
-let selectedExitId = DEFAULT_EXIT_ID;
 
 const INTAKE_QUESTIONS = [
   {
@@ -116,20 +113,6 @@ export function render() {
     display:flex;flex-direction:column;max-width:480px;margin:0 auto;">
     <div id="attendee-screen"></div>
     ${renderAIChat()}
-    <style>
-      @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after {
-          animation-duration: 0.01ms !important;
-          animation-iteration-count: 1 !important;
-          transition-duration: 0.01ms !important;
-          scroll-behavior: auto !important;
-        }
-      }
-      .exit-opt:focus-visible {
-        outline: 2px solid #00C49A;
-        outline-offset: 2px;
-      }
-    </style>
   </div>`;
 }
 
@@ -587,7 +570,7 @@ function renderDuring() {
 function renderExit() {
   const section = getSectionFromAnswers();
   const options = getExitPlan(section, answers.transport, currentDensities);
-  const selected = options.some(o => o.id === selectedExitId) ? selectedExitId : options[0]?.id || DEFAULT_EXIT_ID;
+  let selected = 'now';
 
   return `
   <div class="fade-in" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
@@ -603,15 +586,14 @@ function renderExit() {
 
     <div style="display:flex;flex-direction:column;gap:8px;" id="exit-options" role="radiogroup" aria-label="Choose an exit route">
       ${options.map((opt, i) => {
-        const isSelected = opt.id === selected;
         const s = getZoneStatus(opt.density);
         const isRec = i === 0 && opt.density < 0.7;
         return `
-          <button type="button" class="exit-opt" data-id="${opt.id}" role="radio" aria-checked="${isSelected ? 'true' : 'false'}" data-selected="${isSelected ? 'true' : 'false'}" style="
-            width:100%;text-align:left;
-            background:${isSelected ? 'rgba(0,196,154,0.05)' : 'var(--bg-card)'};
-            border:${isSelected ? '1px solid rgba(0,196,154,0.3)' : '1px solid var(--border)'};
-            border-radius:16px;padding:18px;cursor:pointer;transition:all 0.2s;">
+          <button type="button" class="exit-opt" role="radio" aria-checked="${i === 0 ? 'true' : 'false'}" data-id="${opt.id}" style="
+            background:${i === 0 ? 'rgba(0,196,154,0.05)' : 'var(--bg-card)'};
+            border:${i === 0 ? '1px solid rgba(0,196,154,0.3)' : '1px solid var(--border)'};
+            border-radius:16px;padding:18px;cursor:pointer;transition:all 0.2s;
+            width:100%;text-align:left;">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;">
               <div style="flex:1;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -636,8 +618,8 @@ function renderExit() {
               </div>
               <div class="exit-radio" data-id="${opt.id}" style="
                 width:20px;height:20px;border-radius:50%;flex-shrink:0;
-                border:2px solid ${isSelected ? '#00C49A' : 'rgba(255,255,255,0.15)'};
-                background:${isSelected ? '#00C49A' : 'transparent'};margin-left:12px;
+                border:2px solid ${i === 0 ? '#00C49A' : 'rgba(255,255,255,0.15)'};
+                background:${i === 0 ? '#00C49A' : 'transparent'};margin-left:12px;
                 margin-top:2px;"></div>
             </div>
           </button>`;
@@ -763,7 +745,6 @@ function renderThankYou() {
 
 // ─── SCREEN SWITCHER ──────────────────────────────────────────────────────
 function showScreen(name) {
-  const previous = screen;
   screen = name;
   const root = document.getElementById('attendee-screen');
   if (!root) return;
@@ -781,9 +762,6 @@ function showScreen(name) {
   root.innerHTML = html;
   root.scrollTop = 0;
   attachScreenListeners(name);
-  if (previous !== name) {
-    void trackEvent('attendee_screen_view', { screen: name }, { route: '/attendee' });
-  }
 }
 
 // ─── SCREEN EVENT LISTENERS ───────────────────────────────────────────────
@@ -818,10 +796,6 @@ function attachScreenListeners(name) {
     document.getElementById('intake-done-btn')?.addEventListener('click', async () => {
       const uid = localStorage.getItem('ef_uid') || 'anon';
       try { await saveAttendeeData(uid, { ...answers, completedAt: Date.now() }); } catch (e) {}
-      void trackEvent('attendee_intake_completed', {
-        transport: answers.transport || '',
-        group: answers.group || ''
-      }, { route: '/attendee' });
       intakeStep = 0;
       currentDensities = getZoneDensity();
       showScreen('plan');
@@ -857,28 +831,24 @@ function attachScreenListeners(name) {
   }
 
   if (name === 'exit') {
-    const exitOptions = document.getElementById('exit-options');
-    makeSelectableList({
-      container: exitOptions,
-      itemSelector: '.exit-opt',
-      getValue: (el) => el?.dataset?.id,
-      onSelect: (selectedEl, value) => {
-        selectedExitId = value || selectedExitId;
+    // Select radio
+    document.querySelectorAll('.exit-opt').forEach(opt => {
+      opt.addEventListener('click', () => {
+        const id = opt.dataset.id;
         document.querySelectorAll('.exit-opt').forEach(o => {
-          const active = o === selectedEl;
-          o.style.borderColor = active ? 'rgba(0,196,154,0.4)' : 'var(--border)';
-          o.style.background = active ? 'rgba(0,196,154,0.04)' : 'var(--bg-card)';
-          o.setAttribute('aria-checked', active ? 'true' : 'false');
+          o.style.borderColor = 'var(--border)';
+          o.style.background = 'var(--bg-card)';
+          o.setAttribute('aria-checked', 'false');
           const radio = o.querySelector('.exit-radio');
-          if (radio) {
-            radio.style.background = active ? '#00C49A' : 'transparent';
-            radio.style.borderColor = active ? '#00C49A' : 'rgba(255,255,255,0.15)';
-          }
+          if (radio) { radio.style.background = 'transparent'; radio.style.borderColor = 'rgba(255,255,255,0.15)'; }
         });
-      },
-      initialSelectedValue: selectedExitId
+        opt.style.borderColor = 'rgba(0,196,154,0.4)';
+        opt.style.background = 'rgba(0,196,154,0.04)';
+        opt.setAttribute('aria-checked', 'true');
+        const radio = opt.querySelector('.exit-radio');
+        if (radio) { radio.style.background = '#00C49A'; radio.style.borderColor = '#00C49A'; }
+      });
     });
-
     document.getElementById('exit-start-btn')?.addEventListener('click', () => showScreen('escort-exit'));
   }
 
@@ -924,10 +894,6 @@ function attachScreenListeners(name) {
           uid: localStorage.getItem('ef_uid') || 'anon'
         });
       } catch (e) {}
-      void trackEvent('attendee_feedback_submitted', {
-        rating: window._fbStarVal || 0,
-        selectedAspects: chips.length
-      }, { route: '/attendee' });
       showScreen('thanks');
     });
   }
@@ -1021,17 +987,16 @@ function initDuringMap() {
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
 export async function init(navigate) {
+  const initStart = performance.now();
   // Silent anonymous authentication to establish Firebase database write permissions
   try {
     await loginAnonymously();
-    void trackEvent('attendee_session_started', {}, { route: '/attendee' });
   } catch (e) {
     console.warn("Silent auth failed:", e);
   }
 
   // Reset state
   screen = 'intake'; intakeStep = 0; answers = {}; currentDensities = {}; nudgeShown = false;
-  selectedExitId = DEFAULT_EXIT_ID;
 
   // Global nav helpers
   window._attBack = () => {
@@ -1059,11 +1024,23 @@ export async function init(navigate) {
     // Update zone strips if visible
     const strip = document.getElementById('plan-zone-strip') || document.getElementById('during-zone-strip');
     if (strip) strip.innerHTML = zoneStrip(currentDensities);
+    scheduleUIRefresh();
   });
   cleanupFns.push(unZones);
 
   // Init AI chat
   initAIChat(() => currentDensities);
+
+  let refreshScheduled = false;
+  function scheduleUIRefresh() {
+    if (refreshScheduled) return;
+    refreshScheduled = true;
+    requestAnimationFrame(() => {
+      refreshScheduled = false;
+      updateSafeExitUI();
+      updateGlobalDensityBadge();
+    });
+  }
 
   function updateGlobalDensityBadge() {
     const el = document.getElementById('att-global-density');
@@ -1125,20 +1102,14 @@ export async function init(navigate) {
           border:none; border-radius:10px; font-weight:700; cursor:pointer;">
           VIEW SAFE EXIT ROUTE →
         </button>
-        `;
-      void trackEvent('attendee_emergency_banner_shown', {
-        zoneId: state.zone || 'unknown',
-        type: state.type || 'unknown'
-      }, { route: '/attendee' });
+      `;
       document.getElementById('att-safe-exit-btn')?.addEventListener('click', () => {
-        announce('Opening safe exit options', 'assertive');
-        void trackEvent('attendee_safe_exit_opened', {}, { route: '/attendee' });
         showScreen('exit');
       });
     } else {
       if (banner) banner.remove();
     }
-    updateSafeExitUI();
+    scheduleUIRefresh();
   });
   cleanupFns.push(unEmerg);
 
@@ -1153,17 +1124,13 @@ export async function init(navigate) {
     }
   }
 
-  function updatePolling() {
-      updateSafeExitUI();
-      updateGlobalDensityBadge();
-  }
-
-  // Polling for UI
-  const evacInt = setInterval(updatePolling, 5000);
+  // Lightweight fallback polling for missed UI refresh in background tabs
+  const evacInt = setInterval(scheduleUIRefresh, 15000);
   cleanupFns.push(() => clearInterval(evacInt));
   
   // Initial immediate call
-  updatePolling();
+  scheduleUIRefresh();
+  pushPerformanceMetric('attendee_init_ms', Math.round(performance.now() - initStart), { panel: 'attendee' }).catch(() => {});
 
   return () => {
     cleanupFns.forEach(fn => { try { fn(); } catch(e) {} });
