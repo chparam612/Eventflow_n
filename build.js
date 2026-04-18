@@ -101,7 +101,9 @@ function injectKeys() {
     diagnostics.forEach((d) => console.warn(`   - ${d}`));
     console.warn('  ℹ️ Set env vars in .env or process env before deploy to avoid runtime fallback/errors.\n');
     if (STRICT_ENV_CHECK) {
-      throw new Error('Build failed due to STRICT_ENV_CHECK=true with unresolved configuration placeholders.');
+      throw new Error(
+        `Build failed due to STRICT_ENV_CHECK=true with unresolved configuration placeholders:\n- ${diagnostics.join('\n- ')}`
+      );
     }
   }
 }

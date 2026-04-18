@@ -109,11 +109,7 @@ export function resolveTelemetryExportPlan(modeInput, hasBigQueryConfig) {
 
   return {
     requestedMode,
-    effectiveMode: bigQueryEnabled
-      ? requestedMode
-      : queueEnabled
-        ? 'queue'
-        : requestedMode,
+    effectiveMode: bigQueryEnabled ? requestedMode : 'queue',
     queueEnabled,
     bigQueryEnabled,
     warnings
