@@ -70,6 +70,14 @@
       border: 0;
       white-space: nowrap;
     }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 
   <script>
@@ -101,7 +109,7 @@
 <body>
 
   <button class="back-btn" onclick="window.history.back()" aria-label="Go back">←</button>
-  <div id="map" aria-label="Attendee navigation dashboard"></div>
+  <div id="map" role="region" aria-label="Attendee navigation dashboard"></div>
   
   <div class="panel">
     <!-- UI Controllers -->

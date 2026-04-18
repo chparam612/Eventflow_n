@@ -2,6 +2,7 @@
  * EventFlow V2 — SPA Router
  * Hash-free History API routing with auth guards and lazy panel loading
  */
+import { announce } from '/src/a11y.js';
 
 const routes = {
   '/':              () => import('/src/panels/landing.js'),
@@ -13,6 +14,24 @@ const routes = {
 };
 
 let currentUnmount = null;
+
+function ensureMainLandmark(app) {
+  if (!app) return;
+  app.setAttribute('role', 'main');
+  app.setAttribute('aria-label', 'EventFlow main content');
+}
+
+function focusRouteHeading(app) {
+  if (!app) return;
+  const heading = app.querySelector('h1, h2');
+  if (heading) {
+    heading.setAttribute('tabindex', '-1');
+    requestAnimationFrame(() => heading.focus());
+  } else {
+    app.setAttribute('tabindex', '-1');
+    requestAnimationFrame(() => app.focus());
+  }
+}
 
 // ─── Navigate ──────────────────────────────────────────────────────────────
 export async function navigate(path) {
@@ -29,6 +48,7 @@ export async function navigate(path) {
 async function renderRoute(path) {
   const app = document.getElementById('app');
   if (!app) return;
+  ensureMainLandmark(app);
 
   // Show inline spinner
   app.innerHTML = `
@@ -130,6 +150,10 @@ async function renderRoute(path) {
       } catch(e) { console.warn('Translation error:', e); }
     }
 
+    focusRouteHeading(app);
+    const routeHeading = app.querySelector('h1, h2')?.textContent?.trim();
+    announce(routeHeading ? `Navigated to ${routeHeading}` : `Navigated to ${path}`, 'polite');
+
   } catch (e) {
     console.error('[Router] Panel load failed:', e);
     app.innerHTML = `
@@ -138,11 +162,13 @@ async function renderRoute(path) {
         <div style="font-size:1.4rem;">⚠️</div>
         <div style="color:var(--text-secondary);text-align:center;">
           Failed to load panel.<br>
-          <small style="color:var(--text-muted);">${e.message}</small>
+          <small id="route-load-error" style="color:var(--text-secondary);"></small>
         </div>
         <button onclick="window.location.reload()" class="btn-primary"
           style="width:auto;padding:10px 24px;">Reload</button>
       </div>`;
+    const errEl = document.getElementById('route-load-error');
+    if (errEl) errEl.textContent = e?.message || 'Unknown error';
   }
 }
 

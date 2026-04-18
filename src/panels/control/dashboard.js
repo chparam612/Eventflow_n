@@ -16,6 +16,7 @@ import { predictFutureDensity, detectSurgeRisk } from '/src/predictiveEngine.js'
 import { rankBestExit } from '/src/evacuationEngine.js';
 import { calculateDensityColor } from '/src/heatmapEngine.js';
 import { calculateTotalVisitors, calculateAverageDensity, findPeakZone, calculateGateUtilization, estimateAverageWaitTime } from '/src/analyticsEngine.js';
+import { announce, createDialogController } from '/src/a11y.js';
 
 // NMS approximate bounding coords for each zone overlay
 const ZONE_BOUNDS = {
@@ -35,6 +36,7 @@ let simInterval = null;
 let aiInterval = null;
 let nudgesSent = 0;
 let cleanupFirebase = [];
+const FALLBACK_ZONE = 'north';
 
 export function render() {
   return `
@@ -103,7 +105,7 @@ export function render() {
           font-size:0.7rem;font-weight:600;letter-spacing:0.08em;
           color:var(--text-muted);text-transform:uppercase;margin-bottom:12px;">
           Staff Online</div>
-        <div id="staff-list" style="display:flex;flex-direction:column;gap:6px;">
+        <div id="staff-list" style="display:flex;flex-direction:column;gap:6px;" aria-live="polite" aria-label="Live staff status list">
           <div style="color:var(--text-muted);font-size:0.82rem;">Waiting for staff…</div>
         </div>
       </div>
@@ -273,7 +275,10 @@ export function render() {
             color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">
             📡 Dispatch</div>
 
-          <select id="ctrl-zone-sel" style="width:100%;margin-bottom:8px;font-size:0.85rem;">
+          <label for="ctrl-zone-sel" style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px;">
+            Select target zone
+          </label>
+          <select id="ctrl-zone-sel" aria-label="Select zone for dispatch" style="width:100%;margin-bottom:8px;font-size:0.85rem;">
             ${Object.entries(ZONES).map(([id, z]) =>
               `<option value="${id}">${z.name}</option>`).join('')}
           </select>
@@ -294,7 +299,10 @@ export function render() {
             `).join('')}
           </div>
 
-          <textarea id="ctrl-instr-text" placeholder="Custom instruction…" style="
+          <label for="ctrl-instr-text" style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px;">
+            Instruction text
+          </label>
+          <textarea id="ctrl-instr-text" aria-label="Custom instruction text" placeholder="Custom instruction…" style="
             width:100%;height:60px;resize:none;margin-bottom:8px;
             font-size:0.85rem;"></textarea>
 
@@ -313,7 +321,7 @@ export function render() {
               📲 Nudge Fans
             </button>
           </div>
-          <div id="ctrl-send-confirm" style="
+          <div id="ctrl-send-confirm" role="status" aria-live="polite" aria-atomic="true" style="
             font-size:0.78rem;color:#00C49A;margin-top:6px;display:none;">
             ✓ Sent successfully</div>
         </div>
@@ -367,6 +375,14 @@ export function render() {
       background:#00C49A;cursor:pointer;border:2px solid #060A10;
     }
     .quick-instr-btn:hover { border-color:rgba(255,107,53,0.4)!important;background:rgba(255,107,53,0.06)!important; }
+    .staff-zone-select:focus-visible,
+    .dispatch-from-alert:focus-visible,
+    #ctrl-emergency-btn:focus-visible,
+    #emerg-confirm:focus-visible,
+    #emerg-cancel:focus-visible {
+      outline: 2px solid #00C49A;
+      outline-offset: 2px;
+    }
     
     /* Emergency Modal Overlay */
     #emerg-modal-overlay {
@@ -378,14 +394,14 @@ export function render() {
     @keyframes emerg-pulse { from { opacity: 0.6; } to { opacity: 1; } }
   </style>
   
-  <div id="emerg-modal-overlay">
+  <div id="emerg-modal-overlay" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="emerg-modal-title" aria-describedby="emerg-modal-desc" tabindex="-1">
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:24px;width:320px;box-shadow:0 20px 40px rgba(0,0,0,0.4);">
-      <h3 style="margin-top:0;color:var(--red);display:flex;align-items:center;gap:10px;">🚨 Activate Emergency</h3>
-      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px;">This will block the selected zone and immediately alert all staff and attendees.</p>
+      <h3 id="emerg-modal-title" style="margin-top:0;color:var(--red);display:flex;align-items:center;gap:10px;">🚨 Activate Emergency</h3>
+      <p id="emerg-modal-desc" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px;">This will block the selected zone and immediately alert all staff and attendees.</p>
       
       <div style="margin-bottom:16px;">
-        <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Type</label>
-        <select id="emerg-type-sel" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
+        <label for="emerg-type-sel" style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Type</label>
+        <select id="emerg-type-sel" aria-label="Emergency type" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
           <option value="FIRE">🔥 FIRE</option>
           <option value="SECURITY">👮 SECURITY THREAT</option>
           <option value="MEDICAL">🚑 MASS MEDICAL INCIDENT</option>
@@ -393,8 +409,8 @@ export function render() {
       </div>
       
       <div style="margin-bottom:24px;">
-        <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Blocked Zone</label>
-        <select id="emerg-zone-sel" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
+        <label for="emerg-zone-sel" style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;">Blocked Zone</label>
+        <select id="emerg-zone-sel" aria-label="Blocked emergency zone" style="width:100%;padding:10px;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);">
           ${Object.entries(ZONES).map(([id, z]) => `<option value="${id}">${z.name}</option>`).join('')}
         </select>
       </div>
@@ -483,11 +499,11 @@ export async function init(navigate) {
       const zone = ZONES[s.zone]?.name || s.zone || 'Unknown';
       const ago = s.updatedAt ? Math.round((Date.now() - s.updatedAt) / 60000) : '?';
       return `
-        <div style="
+        <button type="button" class="staff-zone-select" data-zone="${s.zone || FALLBACK_ZONE}" style="
+          width:100%;text-align:left;
           background:var(--bg-card2);border:1px solid var(--border);
           border-radius:10px;padding:10px 12px;cursor:pointer;transition:all 0.2s;"
-          onclick="document.getElementById('ctrl-zone-sel').value='${s.zone || 'north'}'"
-          title="Click to dispatch to ${zone}">
+          aria-label="Select ${zone} for dispatch">
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="width:7px;height:7px;border-radius:50%;
               background:${color};display:inline-block;flex-shrink:0;"></span>
@@ -498,8 +514,18 @@ export async function init(navigate) {
                 ${s.status || 'offline'} · ${ago}m ago</div>
             </div>
           </div>
-        </div>`;
+        </button>`;
     }).join('');
+
+    el.querySelectorAll('.staff-zone-select').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const zel = document.getElementById('ctrl-zone-sel');
+        if (zel) {
+          zel.value = btn.dataset.zone || FALLBACK_ZONE;
+          announce(`Dispatch zone set to ${ZONES[zel.value]?.name || zel.value}`, 'polite');
+        }
+      });
+    });
   }
 
   async function renderAIInsights(densities) {
@@ -890,6 +916,11 @@ export async function init(navigate) {
   // ── Emergency Actions ──
   const emergBtn = document.getElementById('ctrl-emergency-btn');
   const modal = document.getElementById('emerg-modal-overlay');
+  const emergencyDialog = createDialogController({
+    dialog: modal,
+    onOpen: () => { modal.style.display = 'flex'; },
+    onClose: () => { modal.style.display = 'none'; }
+  });
   
   emergBtn?.addEventListener('click', () => {
     if (currentEmergency.active) {
@@ -897,11 +928,15 @@ export async function init(navigate) {
         setEmergencyStatus(false);
       }
     } else {
-      modal.style.display = 'flex';
+      emergencyDialog.open(emergBtn);
     }
   });
 
-  document.getElementById('emerg-cancel')?.addEventListener('click', () => modal.style.display = 'none');
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) emergencyDialog.close();
+  });
+
+  document.getElementById('emerg-cancel')?.addEventListener('click', () => emergencyDialog.close());
   
   document.getElementById('emerg-confirm')?.addEventListener('click', async () => {
     try { // TASK 8: Prevent UI Crash
@@ -909,8 +944,9 @@ export async function init(navigate) {
       const zone = document.getElementById('emerg-zone-sel').value;
       const name = ZONES[zone]?.name || zone;
       
-      modal.style.display = 'none';
+      emergencyDialog.close();
       await setEmergencyStatus(true, type, zone);
+      announce(`Emergency mode activated for ${name}`, 'assertive');
       
       // TASK 6: Logging
       console.log("Emergency Activated:", type);
@@ -1018,6 +1054,7 @@ export async function init(navigate) {
     const conf = document.getElementById('ctrl-send-confirm');
     if (conf) { conf.style.display = 'block'; setTimeout(() => conf.style.display = 'none', 2500); }
     document.getElementById('ctrl-instr-text').value = '';
+    announce(`Instruction sent to ${ZONES[zone]?.name || zone}`, 'polite');
   });
 
   // ── Nudge attendees ──
@@ -1030,6 +1067,7 @@ export async function init(navigate) {
     if (metricNudges) metricNudges.textContent = nudgesSent;
     const conf = document.getElementById('ctrl-send-confirm');
     if (conf) { conf.textContent = '✓ Nudge sent to attendees'; conf.style.display = 'block'; setTimeout(() => { conf.style.display = 'none'; conf.textContent = '✓ Sent successfully'; }, 2500); }
+    announce(`Nudge sent to ${ZONES[zone]?.name || zone}`, 'polite');
   });
 
   // ── AI Insights (immediately + every 2 min) ──
@@ -1046,6 +1084,7 @@ export async function init(navigate) {
   return () => {
     if (simInterval) clearInterval(simInterval);
     if (aiInterval) clearInterval(aiInterval);
+    emergencyDialog.destroy();
     cleanupFirebase.forEach(fn => { try { fn(); } catch (e) {} });
     cleanupFirebase = [];
     zoneRectangles = {};
