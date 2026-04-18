@@ -13,5 +13,10 @@
     "@google-cloud/bigquery": "8.1.1",
     "firebase-admin": "13.8.0",
     "firebase-functions": "7.2.5"
+  },
+  "overrides": {
+    "@tootallnate/once": "3.0.1",
+    "retry-request": "8.0.2",
+    "teeny-request": "10.1.2"
   }
 }
