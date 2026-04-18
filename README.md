@@ -70,7 +70,7 @@ Three panels, one live data loop — every action in the control room reflects i
 | **Firebase Authentication** | Anonymous (fans) + Email/Password (staff/control) |
 | **Firebase Hosting** | Edge-cached PWA with SPA rewrite rules |
 | **Google Maps JS API** | Satellite view of NMS with dynamic Density-Aware Dijkstra Routing |
-| **Gemini 2.0 Flash API** | AI chat for fans + automated crowd insights for control room |
+| **Vertex AI (Gemini 2.0 Flash)** | AI chat for fans + automated crowd insights for control room |
 | **Firebase Analytics** | Route views + attendee/staff/control action telemetry events |
 | **Firebase Remote Config** | Runtime control for AI refresh cadence and auto-alert cooldown |
 | **Firebase App Check** | ReCAPTCHA v3 protection hook for abuse-resistant API access |
@@ -249,6 +249,7 @@ firebase deploy
 - Optional callable sink: `ingestTelemetry` (region: `asia-south1`) validates/auth-checks payloads and writes:
   - `ingestedTelemetry/{eventId}` (canonical ingest record)
   - `telemetryExportQueue/{eventId}` (BigQuery-ready export queue row)
+  - BigQuery row insert when `TELEMETRY_EXPORT_MODE=bigquery|hybrid` and table env vars are configured
 - Remote Config keys in use:
   - `ai_insights_interval_ms`
   - `auto_alert_cooldown_ms`
@@ -271,7 +272,7 @@ firebase deploy
 - Cloud Logging query starters:
   - `resource.type="cloud_function" AND textPayload:"telemetry_ingested"`
   - `resource.type="cloud_function" AND textPayload:"telemetry_ingest_failed"`
-  - `resource.type="cloud_function" AND textPayload:"telemetry_bigquery_candidate"`
+  - `resource.type="cloud_function" AND textPayload:"telemetry_bigquery_insert_failed"`
 - Alert policy templates:
   - High error-rate: `telemetry_ingest_failed` count > threshold over 5m
   - Throughput drop: `telemetry_ingested` below baseline during live match window

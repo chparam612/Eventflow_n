@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { BigQuery } from '@google-cloud/bigquery';
 import { initializeApp } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
@@ -11,6 +12,11 @@ import {
 
 initializeApp();
 const db = getDatabase();
+const bigQueryProjectId =
+  process.env.BIGQUERY_PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '';
+const bq = bigQueryProjectId
+  ? new BigQuery({ projectId: bigQueryProjectId })
+  : new BigQuery();
 
 function resolveAuthRole(auth = {}) {
   const email = String(auth.token?.email || '').toLowerCase();
@@ -24,6 +30,33 @@ function getExportMode() {
   const mode = String(process.env.TELEMETRY_EXPORT_MODE || 'queue').toLowerCase();
   if (['queue', 'bigquery', 'hybrid'].includes(mode)) return mode;
   return 'queue';
+}
+
+function getBigQueryTable() {
+  const dataset = String(process.env.BIGQUERY_DATASET || process.env.TELEMETRY_BQ_DATASET || '').trim();
+  const table = String(process.env.BIGQUERY_TABLE || process.env.TELEMETRY_BQ_TABLE || '').trim();
+  if (!dataset || !table) return null;
+  return bq.dataset(dataset).table(table);
+}
+
+async function insertBigQueryRow(row, eventId) {
+  const table = getBigQueryTable();
+  if (!table) {
+    throw new HttpsError(
+      'failed-precondition',
+      'BigQuery export mode requires BIGQUERY_DATASET and BIGQUERY_TABLE configuration.'
+    );
+  }
+  try {
+    await table.insert([row]);
+  } catch (error) {
+    logger.error('telemetry_bigquery_insert_failed', {
+      eventId,
+      code: error?.code || 'unknown',
+      message: error?.message || String(error)
+    });
+    throw new HttpsError('internal', 'Failed to insert telemetry event to BigQuery. Check telemetry_bigquery_insert_failed logs.');
+  }
 }
 
 export const ingestTelemetry = onCall(
@@ -72,7 +105,10 @@ export const ingestTelemetry = onCall(
     ];
 
     const bqRow = buildBigQueryRow(cleanRecord, envelope);
-    if (exportMode === 'queue' || exportMode === 'hybrid') {
+    const queueEnabled = exportMode === 'queue' || exportMode === 'hybrid';
+    const bigQueryEnabled = exportMode === 'bigquery' || exportMode === 'hybrid';
+
+    if (queueEnabled) {
       writes.push(
         db.ref('telemetryExportQueue').child(eventId).set({
           status: 'pending',
@@ -83,30 +119,27 @@ export const ingestTelemetry = onCall(
       );
     }
 
-    if (exportMode === 'bigquery' || exportMode === 'hybrid') {
-      logger.info('telemetry_bigquery_candidate', {
-        eventId,
-        schemaVersion: bqRow.schemaVersion,
-        eventName: bqRow.eventName,
-        route: bqRow.route,
-        authRole
-      });
-    }
-
     try {
       await Promise.all(writes);
+      let bigQueryInserted = false;
+      if (bigQueryEnabled) {
+        await insertBigQueryRow(bqRow, eventId);
+        bigQueryInserted = true;
+      }
       logger.info('telemetry_ingested', {
         eventId,
         eventName: cleanRecord.eventName,
         route: cleanRecord.route,
         authRole,
-        exportMode
+        exportMode,
+        bigQueryInserted
       });
       return {
         ok: true,
         eventId,
         exportMode,
-        queuedForExport: exportMode === 'queue' || exportMode === 'hybrid',
+        queuedForExport: queueEnabled,
+        bigQueryInserted,
         schemaVersion: envelope.schemaVersion
       };
     } catch (error) {
@@ -115,6 +148,7 @@ export const ingestTelemetry = onCall(
         code: error?.code || 'unknown',
         message: error?.message || String(error)
       });
+      if (error instanceof HttpsError) throw error;
       throw new HttpsError('internal', 'Telemetry ingestion failed');
     }
   }

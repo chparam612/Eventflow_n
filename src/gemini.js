@@ -1,12 +1,18 @@
 /**
- * EventFlow V2 — Gemini AI Module
- * Uses gemini-2.0-flash for fast responses
+ * EventFlow V2 — Vertex AI Gemini Module
+ * Uses Vertex AI publisher model endpoint for gemini-2.0-flash.
  */
 
-// NOTE: Replace with real API key before production deploy
-// Current: using environment-injected value via build.js (see .env → GEMINI_API_KEY)
+// NOTE: Replace with real values before production deploy.
+// Values are environment-injected by build.js from .env.
 const GEMINI_KEY = 'YOUR_GEMINI_KEY_HERE';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+const VERTEX_PROJECT_ID = 'YOUR_VERTEX_PROJECT_ID';
+const VERTEX_LOCATION = 'YOUR_VERTEX_LOCATION';
+const VERTEX_MODEL = 'gemini-2.0-flash-001';
+
+function getVertexUrl() {
+  return `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent?key=${encodeURIComponent(GEMINI_KEY)}`;
+}
 
 // ─── Attendee system context ────────────────────────────────────────────────
 const ATTENDEE_SYSTEM = `You are EventFlow AI, a friendly crowd assistant at
@@ -22,11 +28,18 @@ RULES:
 
 // ─── Core API call ─────────────────────────────────────────────────────────
 async function callGemini(prompt, maxTokens = 200) {
-  if (!GEMINI_KEY || GEMINI_KEY === 'YOUR_GEMINI_KEY_HERE') {
+  if (
+    !GEMINI_KEY ||
+    GEMINI_KEY === 'YOUR_GEMINI_KEY_HERE' ||
+    !VERTEX_PROJECT_ID ||
+    VERTEX_PROJECT_ID === 'YOUR_VERTEX_PROJECT_ID' ||
+    !VERTEX_LOCATION ||
+    VERTEX_LOCATION === 'YOUR_VERTEX_LOCATION'
+  ) {
     return null; // Key not set — use fallback
   }
   try {
-    const res = await fetch(GEMINI_URL, {
+    const res = await fetch(getVertexUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

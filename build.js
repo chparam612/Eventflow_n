@@ -10,6 +10,7 @@ import url  from 'url';
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const SRC  = path.join(__dirname, 'src');
 const DEST = path.join(__dirname, 'public', 'src');
+const DEFAULT_VERTEX_LOCATION = 'asia-south1';
 
 function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
@@ -55,6 +56,8 @@ function injectKeys() {
 
   replaceInFile('public/src/firebase.js', 'YOUR_API_KEY', keys.FIREBASE_API_KEY);
   replaceInFile('public/src/gemini.js', 'YOUR_GEMINI_KEY_HERE', keys.GEMINI_API_KEY);
+  replaceInFile('public/src/gemini.js', 'YOUR_VERTEX_PROJECT_ID', keys.VERTEX_PROJECT_ID);
+  replaceInFile('public/src/gemini.js', 'YOUR_VERTEX_LOCATION', keys.VERTEX_LOCATION || DEFAULT_VERTEX_LOCATION);
   replaceInFile('public/index.html', 'YOUR_MAPS_KEY_HERE', keys.GOOGLE_MAPS_API_KEY);
   replaceInFile('public/attendee-navigation.html', 'YOUR_MAPS_KEY_HERE', keys.GOOGLE_MAPS_API_KEY);
 }
