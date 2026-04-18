@@ -5,7 +5,7 @@
 import { getCurrentUser, isStaffUser, logout } from '/src/auth.js';
 import { 
   writeStaffStatus, listenInstructions, pushInstruction, 
-  listenEmergency 
+  listenEmergency, trackEvent
 } from '/src/firebase.js';
 import { setStaffOverride, clearStaffOverride, ZONES } from '/src/simulation.js';
 
@@ -169,13 +169,14 @@ export function render() {
     </style>
     
     <!-- Emergency Overlay (Hidden by default) -->
-    <div id="staff-emerg-overlay" style="
+    <div id="staff-emerg-overlay" role="alertdialog" aria-modal="true" aria-live="assertive" aria-atomic="true"
+      aria-labelledby="staff-emerg-title" aria-describedby="staff-emerg-msg" tabindex="-1" style="
       position:fixed;top:0;left:0;right:0;bottom:0;
       background:#060A10;z-index:1001;display:none;
       flex-direction:column;align-items:center;justify-content:center;
       padding:24px;text-align:center;">
       <div style="font-size:4rem;margin-bottom:20px;animation:emerg-pulse 1s infinite alternate;">🚨</div>
-      <h1 style="color:#FF4757;font-family:'Space Grotesk',sans-serif;margin:0 0 10px 0;">EMERGENCY ACTIVE</h1>
+      <h1 id="staff-emerg-title" style="color:#FF4757;font-family:'Space Grotesk',sans-serif;margin:0 0 10px 0;">EMERGENCY ACTIVE</h1>
       <p id="staff-emerg-msg" style="color:#fff;font-size:1.1rem;line-height:1.5;margin-bottom:30px;">
         Evacuate fans immediately!
       </p>
@@ -206,6 +207,7 @@ export async function init(navigate) {
 
   // ── Write initial Firebase status ──
   await writeStaffStatus(uid, zone, 'clear', true);
+  void trackEvent('staff_session_started', { zoneId: zone }, { route: '/staff' });
 
   // ── Listen for instructions ──
   const listenFn = await import('/src/firebase.js').then(m => m.listenInstructions);
@@ -261,6 +263,7 @@ export async function init(navigate) {
       setStaffOverride(zone, 'crowded');
     }
     await writeStaffStatus(uid, zone, status, true);
+    void trackEvent('staff_zone_status_changed', { zoneId: zone, status }, { route: '/staff' });
   };
 
   setStatus('clear'); // default
@@ -300,6 +303,7 @@ export async function init(navigate) {
       btn.style.borderColor = 'rgba(0,196,154,0.4)';
       setTimeout(() => btn.style.borderColor = 'var(--border)', 800);
       addReport(type);
+      void trackEvent('staff_quick_report_sent', { zoneId: zone, reportType: type }, { route: '/staff' });
     });
   });
 
@@ -307,6 +311,7 @@ export async function init(navigate) {
     const txt = document.getElementById('custom-report-text')?.value?.trim();
     if (!txt) return;
     addReport('other');
+    void trackEvent('staff_custom_report_sent', { zoneId: zone, chars: txt.length }, { route: '/staff' });
     document.getElementById('custom-report-text').value = '';
     document.getElementById('custom-report-box').style.display = 'none';
   });
@@ -314,23 +319,35 @@ export async function init(navigate) {
   // ── Logout ──
   document.getElementById('staff-logout-btn')?.addEventListener('click', async () => {
     await writeStaffStatus(uid, zone, 'offline', false);
+    void trackEvent('staff_session_ended', { zoneId: zone }, { route: '/staff' });
     await logout();
   });
 
   // ── Emergency Listener ──
   const emergOverlay = document.getElementById('staff-emerg-overlay');
   const emergMsg = document.getElementById('staff-emerg-msg');
+  const emergAck = document.getElementById('staff-emerg-ack');
+  let lastFocusedEl = null;
   const unListenEmerg = listenEmergency((state) => {
     if (state.active && state.zone === zone) {
+      if (document.activeElement instanceof HTMLElement) {
+        lastFocusedEl = document.activeElement;
+      }
       if (emergOverlay) emergOverlay.style.display = 'flex';
       if (emergMsg) emergMsg.textContent = `🚨 ${state.type} detected in ${zoneName.toUpperCase()}. Redirect fans to nearest safe exit immediately.`;
+      if (emergAck) setTimeout(() => emergAck.focus(), 0);
+      void trackEvent('staff_emergency_received', { zoneId: zone, type: state.type || 'unknown' }, { route: '/staff' });
     } else {
       if (emergOverlay) emergOverlay.style.display = 'none';
+      if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') {
+        setTimeout(() => lastFocusedEl.focus(), 0);
+      }
     }
   });
 
   document.getElementById('staff-emerg-ack')?.addEventListener('click', async () => {
     if (emergOverlay) emergOverlay.style.display = 'none';
+    void trackEvent('staff_emergency_acknowledged', { zoneId: zone }, { route: '/staff' });
     await pushInstruction(zone, `ACK: Evacuation started by staff ${uid.slice(0,5)}`, 'STAFF');
   });
 

@@ -59,4 +59,21 @@ A final automated pass was conducted to ensure the repository meets Google Promp
 
 ---
 
+## 5. Google Services Expansion QA [ADDED]
+
+- **Firebase Analytics**: Verified event logging hooks for route views and control/staff/attendee action flows.
+- **Firebase Remote Config**: Verified runtime keys for AI refresh interval and auto-alert cooldown with safe defaults when fetch fails.
+- **Firebase App Check Hook**: Verified guarded initialization path using `window.__EF_APPCHECK_SITE_KEY` (no hard dependency in local dev).
+- **Firebase Performance Monitoring**: Verified zone-sync trace wrappers (`startPerformanceTrace` / `stopPerformanceTrace`) around control write pipeline.
+- **Cloud Functions Callable Sink**: Verified optional telemetry sink (`ingestTelemetry`) fallback path; database logging remains primary when function is unavailable.
+
+## 6. Maintainability & Accessibility Hardening [ADDED]
+
+- **Code Quality**: Replaced sequential zone writes with `Promise.allSettled` sync helper to improve resilience and avoid partial-update crashes.
+- **Accessibility**: Staff emergency overlay upgraded to `role="alertdialog"` with modal semantics and focus handoff to acknowledgment CTA.
+- **Accessibility**: Attendee emergency banner now emits assertive screen-reader alerts.
+- **Testing**: Added dedicated observability tests for telemetry sanitization and runtime config parsing.
+
+---
+
 **Conclusion:** EventFlow V2 has passed all functional, security, and accessibility checks and is certified ready for judging.

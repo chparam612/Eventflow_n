@@ -7,6 +7,15 @@ import {
   getDatabase, ref, set, push, onValue,
   query, orderByChild, equalTo, limitToLast, off
 } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+import { getAnalytics, isSupported as analyticsSupported, logEvent } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js';
+import {
+  getRemoteConfig, isSupported as remoteConfigSupported,
+  fetchAndActivate, getValue
+} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-remote-config.js';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app-check.js';
+import { getPerformance, isSupported as performanceSupported, trace } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-performance.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js';
+import { buildTelemetryRecord, sanitizeTelemetryParams, toBooleanSetting, toNumberSetting } from '/src/observability.js';
 
 // ─── Firebase Config ───────────────────────────────────────────────────────
 // Replace with your actual Firebase project config
@@ -25,6 +34,18 @@ const firebaseConfig = {
 // ─── App Init ──────────────────────────────────────────────────────────────
 export const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+let analytics = null;
+let remoteConfig = null;
+let performance = null;
+let ingestTelemetryFn = null;
+let googleServicesInitPromise = null;
+
+const REMOTE_CONFIG_DEFAULTS = {
+  ai_insights_interval_ms: '120000',
+  auto_alert_cooldown_ms: '300000',
+  telemetry_sink: 'database',
+  telemetry_function_enabled: 'false'
+};
 
 // ─── Write Guard — prevents infinite recursion loops ──────────────────────
 const _writing = new Set();
@@ -38,6 +59,122 @@ async function safeWrite(key, fn) {
     console.warn('[Firebase] Write failed:', key, e.message);
   } finally {
     _writing.delete(key);
+  }
+}
+
+async function initRemoteConfig() {
+  const supported = await remoteConfigSupported();
+  if (!supported) return null;
+  remoteConfig = getRemoteConfig(app);
+  remoteConfig.defaultConfig = REMOTE_CONFIG_DEFAULTS;
+  remoteConfig.settings.minimumFetchIntervalMillis = 60000;
+  await fetchAndActivate(remoteConfig).catch(() => {});
+  return remoteConfig;
+}
+
+async function initAnalytics() {
+  const supported = await analyticsSupported();
+  if (!supported) return null;
+  analytics = getAnalytics(app);
+  return analytics;
+}
+
+async function initPerformance() {
+  const supported = await performanceSupported();
+  if (!supported) return null;
+  performance = getPerformance(app);
+  return performance;
+}
+
+function initAppCheckIfConfigured() {
+  const siteKey = window.__EF_APPCHECK_SITE_KEY || '';
+  if (!siteKey) return;
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(siteKey),
+    isTokenAutoRefreshEnabled: true
+  });
+}
+
+function initFunctionsSink() {
+  try {
+    const functions = getFunctions(app, 'asia-south1');
+    ingestTelemetryFn = httpsCallable(functions, 'ingestTelemetry');
+  } catch (e) {
+    ingestTelemetryFn = null;
+  }
+}
+
+export function getConfigValue(key, fallback = '') {
+  if (!remoteConfig) return fallback;
+  try {
+    const val = getValue(remoteConfig, key)?.asString?.() ?? '';
+    return val === '' ? fallback : val;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+export function getNumberConfig(key, fallback, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY) {
+  return toNumberSetting(getConfigValue(key, fallback), fallback, min, max);
+}
+
+export function getBooleanConfig(key, fallback = false) {
+  return toBooleanSetting(getConfigValue(key, String(fallback)), fallback);
+}
+
+export async function initGoogleServices(source = 'app') {
+  if (googleServicesInitPromise) return googleServicesInitPromise;
+  googleServicesInitPromise = (async () => {
+    initAppCheckIfConfigured();
+    initFunctionsSink();
+    await Promise.allSettled([
+      initRemoteConfig(),
+      initAnalytics(),
+      initPerformance()
+    ]);
+    void trackEvent('google_services_initialized', { source }, { route: '/' });
+  })();
+  return googleServicesInitPromise;
+}
+
+export function startPerformanceTrace(name) {
+  if (!performance || !name) return null;
+  try {
+    const t = trace(performance, String(name).slice(0, 80));
+    t.start();
+    return t;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function stopPerformanceTrace(perfTrace, attributes = {}) {
+  if (!perfTrace) return;
+  try {
+    Object.entries(sanitizeTelemetryParams(attributes)).forEach(([k, v]) => perfTrace.putAttribute(k, String(v)));
+    perfTrace.stop();
+  } catch (e) {}
+}
+
+export async function trackEvent(eventName, params = {}, context = {}) {
+  const record = buildTelemetryRecord(eventName, params, context);
+  try {
+    const tasks = [push(ref(db, 'analyticsEvents'), record)];
+    if (analytics) {
+      logEvent(analytics, record.eventName, sanitizeTelemetryParams(record.params));
+    }
+    const useFunctions =
+      context.forceFunctions ||
+      getConfigValue('telemetry_sink', 'database') === 'functions' ||
+      getBooleanConfig('telemetry_function_enabled', false);
+    if (useFunctions && ingestTelemetryFn) {
+      tasks.push(ingestTelemetryFn(record));
+    }
+    await Promise.allSettled(tasks);
+  } catch (e) {
+    if (!String(e?.message || '').includes('permission_denied')) {
+      console.warn('[Firebase] telemetry failed:', e.message || e);
+    }
   }
 }
 
@@ -100,6 +237,10 @@ export async function saveFeedback(data) {
     await push(ref(db, 'feedback'), {
       ...data,
       submittedAt: Date.now()
+    });
+    await trackEvent('feedback_submitted', {
+      rating: data?.rating || 0,
+      helpfulness: data?.helpfulness || 'na'
     });
   } catch (e) {
     console.warn('[Firebase] Feedback save failed:', e.message);

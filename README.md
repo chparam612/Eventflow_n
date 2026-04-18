@@ -71,6 +71,11 @@ Three panels, one live data loop — every action in the control room reflects i
 | **Firebase Hosting** | Edge-cached PWA with SPA rewrite rules |
 | **Google Maps JS API** | Satellite view of NMS with dynamic Density-Aware Dijkstra Routing |
 | **Gemini 2.0 Flash API** | AI chat for fans + automated crowd insights for control room |
+| **Firebase Analytics** | Route views + attendee/staff/control action telemetry events |
+| **Firebase Remote Config** | Runtime control for AI refresh cadence and auto-alert cooldown |
+| **Firebase App Check** | ReCAPTCHA v3 protection hook for abuse-resistant API access |
+| **Firebase Performance** | Zone sync traces for control-room write path monitoring |
+| **Cloud Functions (Callable)** | Optional telemetry ingestion path (`ingestTelemetry`) for downstream processing |
 | **Google Fonts** | DM Sans + Space Grotesk typography |
 
 ---
@@ -201,6 +206,19 @@ firebase deploy
 - [ ] Predictive surge AI (10-minute advance warning)
 - [ ] Service Worker offline PWA caching
 - [ ] Multi-stadium support (Wankhede, Eden Gardens)
+
+---
+
+## 📈 Observability & Runtime Controls
+
+- Control room, attendee, and staff flows emit structured telemetry events to `analyticsEvents`
+- Remote Config keys in use:
+  - `ai_insights_interval_ms`
+  - `auto_alert_cooldown_ms`
+  - `telemetry_sink`
+  - `telemetry_function_enabled`
+- Optional callable function sink: `ingestTelemetry` (region: `asia-south1`)
+- App Check auto-initializes when `window.__EF_APPCHECK_SITE_KEY` is provided
 
 ---
 
