@@ -210,18 +210,14 @@ export async function saveFeedback(data) {
 }
 
 export async function setEmergencyStatus(active, type = null, zone = null) {
-  try {
-    await safeWrite('emergency_status', () =>
-      set(ref(db, 'emergency/status'), {
-        active,
-        type,
-        zone,
-        timestamp: active ? Date.now() : null
-      })
-    );
-  } catch (error) {
-    console.error("Emergency write failed:", error);
-  }
+  await safeWrite('emergency_status', () =>
+    set(ref(db, 'emergency/status'), {
+      active,
+      type,
+      zone,
+      timestamp: active ? Date.now() : null
+    })
+  );
 }
 
 // ─── Listeners ─────────────────────────────────────────────────────────────

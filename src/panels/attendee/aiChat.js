@@ -10,6 +10,10 @@ const QUICK_QUESTIONS = [
   'Nearest restroom?'
 ];
 
+/**
+ * Render attendee AI chat widget.
+ * @returns {string}
+ */
 export function renderAIChat() {
   return `
     <!-- Floating AI button -->
@@ -98,6 +102,11 @@ export function renderAIChat() {
     </div>`;
 }
 
+/**
+ * Initialize attendee AI chat interactions.
+ * @param {(() => Record<string, number>) | undefined} getCrowdContext
+ * @returns {void}
+ */
 export function initAIChat(getCrowdContext) {
   const fab     = document.getElementById('ai-chat-fab');
   const panel   = document.getElementById('ai-chat-panel');
@@ -151,7 +160,7 @@ export function initAIChat(getCrowdContext) {
 
   async function sendMessage(text) {
     if (!text.trim()) return;
-    const userEl = appendMessage(text, true);
+    appendMessage(text, true);
     if (input) input.value = '';
     if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.5'; }
 
