@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 let passed = 0;
 let failed = 0;
@@ -21,9 +23,13 @@ function assert(condition, message) {
 
 console.log('\n🧩 PANEL REGRESSION TESTS');
 
-const controlPath = '/home/runner/work/Eventflow_n/Eventflow_n/src/panels/control/dashboard.js';
-const attendeePath = '/home/runner/work/Eventflow_n/Eventflow_n/src/panels/attendee/index.js';
-const staffPath = '/home/runner/work/Eventflow_n/Eventflow_n/src/panels/staff/dashboard.js';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const rootDir = join(__dirname, '..');
+
+const controlPath = join(rootDir, 'src/panels/control/dashboard.js');
+const attendeePath = join(rootDir, 'src/panels/attendee/index.js');
+const staffPath = join(rootDir, 'src/panels/staff/dashboard.js');
 
 const controlSrc = readFileSync(controlPath, 'utf8');
 const attendeeSrc = readFileSync(attendeePath, 'utf8');
