@@ -105,12 +105,12 @@
   
   <div class="panel">
     <!-- UI Controllers -->
-    <label for="startZone" class="sr-only">Start zone</label>
-    <label for="destinationZone" class="sr-only">Destination zone</label>
     <div style="display:flex; gap:10px; margin-bottom:12px;">
+      <label for="startZone" class="sr-only">Start zone</label>
       <select id="startZone" style="flex:1; padding:8px; background:var(--bg-deep); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-family:'DM Sans', sans-serif;">
       </select>
       <span style="display:flex; align-items:center; color:var(--text-secondary);">→</span>
+      <label for="destinationZone" class="sr-only">Destination zone</label>
       <select id="destinationZone" style="flex:1; padding:8px; background:var(--bg-deep); border:1px solid var(--border); color:var(--text-primary); border-radius:6px; font-family:'DM Sans', sans-serif;">
       </select>
     </div>
@@ -428,6 +428,9 @@
     }
 
     function scheduleRouteUpdate(delay = 120) {
+      // Debounce: reset an existing timer so only the last route recalculation request executes.
+      // 120ms was chosen after manual UI checks to keep route updates near-instant while collapsing
+      // bursty Firebase density events into a single repaint, preventing visible map/panel flicker.
       if (routeUpdateTimer) clearTimeout(routeUpdateTimer);
       routeUpdateTimer = setTimeout(() => {
         routeUpdateTimer = null;

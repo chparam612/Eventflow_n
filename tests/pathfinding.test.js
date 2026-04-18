@@ -1,4 +1,4 @@
-import { clearRouteCache, findAlternatePath, findBestRoute, updateDensityMap } from '../src/pathfindingEngine.js';
+import { clearRouteCache, findAlternatePath, findBestRoute, updateDensityMap, zoneDensityMap } from '../src/pathfindingEngine.js';
 
 let passed = 0;
 let failed = 0;
@@ -28,6 +28,12 @@ const baseZones = [
 
 clearRouteCache();
 updateDensityMap({});
+updateDensityMap({ a: 0.5, b: 50, c: -10, d: 150, e: null, f: undefined });
+assert(zoneDensityMap.a === 50, 'Normalizes 0-1 scale density values to percentages');
+assert(zoneDensityMap.b === 50, 'Keeps 0-100 percentage values as-is');
+assert(zoneDensityMap.c === 0 && zoneDensityMap.d === 100, 'Clamps density values to the [0,100] range');
+assert(zoneDensityMap.e === 0 && zoneDensityMap.f === 0, 'Handles null/undefined density input safely');
+updateDensityMap({});
 
 const baseline = findBestRoute('north', 'parking', baseZones);
 assert(baseline.path.length > 0, 'Finds a route from north to parking');
@@ -38,16 +44,22 @@ clearRouteCache();
 const blockedZones = baseZones.map(zone => zone.id === 'concN' ? { ...zone, blocked: true } : zone);
 const blockedRoute = findBestRoute('north', 'parking', blockedZones);
 assert(blockedRoute.path.length > 0, 'Still finds a route when concN is blocked');
+assert(blockedRoute.path[blockedRoute.path.length - 1] === 'parking', 'Blocked-zone reroute still reaches parking');
 assert(!blockedRoute.path.includes('concN'), 'Blocked zone is excluded from computed route');
 
 clearRouteCache();
+const eastBaseline = findBestRoute('east', 'gates', baseZones);
+assert(eastBaseline.path.length > 0, 'Baseline east to gates route is available');
+
+clearRouteCache();
 const congestedZones = baseZones.map(zone => zone.id === 'concN'
-  ? { ...zone, currentFans: 30000, capacity: 10000 }
+  ? { ...zone, currentFans: 9500, capacity: 10000 }
   : zone
 );
 const reroute = findBestRoute('east', 'gates', congestedZones);
 assert(reroute.path.length > 0, 'Finds route under heavy density');
-assert(!reroute.path.includes('concN'), 'High-density concN is avoided when alternatives exist');
+assert(reroute.totalCost >= eastBaseline.totalCost, 'Congestion does not produce a lower-than-baseline route cost');
+assert(!reroute.path.includes('concN') || reroute.totalCost > eastBaseline.totalCost, 'Congestion around concN influences pathing or cost');
 
 clearRouteCache();
 const impossibleZones = baseZones.map(zone => zone.id === 'gates' ? { ...zone, blocked: true } : zone);

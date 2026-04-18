@@ -53,7 +53,6 @@ export function clearRouteCache() {
 function normalizeDensity(value) {
   const numeric = Number.isFinite(value) ? value : 0;
   if (numeric <= 1 && numeric >= 0) return numeric * 100;
-  if (numeric > 1 && numeric <= 2.5) return Math.min(100, numeric * 100);
   return Math.min(100, Math.max(0, numeric));
 }
 
