@@ -3,7 +3,7 @@
  * Screens: intake → plan → escort → during → exit → feedback
  */
 import {
-  getZoneDensity, getZoneStatus, getStatusColor, getStatusEmoji,
+  getZoneDensity, getZoneStatus, getStatusEmoji,
   getRecommendedGate, getExitPlan, shouldShowNudge, getNudgeType, ZONES
 } from '/src/simulation.js';
 import { 
@@ -570,7 +570,6 @@ function renderDuring() {
 function renderExit() {
   const section = getSectionFromAnswers();
   const options = getExitPlan(section, answers.transport, currentDensities);
-  let selected = 'now';
 
   return `
   <div class="fade-in" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
@@ -636,10 +635,6 @@ function renderExit() {
 }
 
 function renderFeedback() {
-  let starRating = 0;
-  let selectedChips = new Set();
-  let helpfulness = '';
-
   return `
   <div class="fade-in" style="padding:20px 16px;display:flex;flex-direction:column;gap:20px;">
     <div style="text-align:center;padding:16px 0 8px;">
@@ -803,7 +798,6 @@ function attachScreenListeners(name) {
 
   if (name === 'plan') {
     currentDensities = getZoneDensity();
-    document.getElementById('plan-estate-btn')?.addEventListener('click', () => showScreen('during'));
     document.getElementById('plan-escort-btn')?.addEventListener('click', () => showScreen('escort'));
     document.getElementById('plan-exit-btn')?.addEventListener('click', () => showScreen('exit'));
   }

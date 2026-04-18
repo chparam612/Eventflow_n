@@ -208,8 +208,7 @@ export async function init(navigate) {
   await writeStaffStatus(uid, zone, 'clear', true);
 
   // ── Listen for instructions ──
-  const listenFn = await import('/src/firebase.js').then(m => m.listenInstructions);
-  cleanupInstructions = listenFn(zone, (items) => {
+  cleanupInstructions = listenInstructions(zone, (items) => {
     const latest = items[0];
     const textEl = document.getElementById('instruction-text');
     const ackBtn = document.getElementById('ack-btn');

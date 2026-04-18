@@ -5,7 +5,7 @@
   "description": "EventFlow V2 — Real-time crowd management for Narendra Modi Stadium",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/core.test.js && node tests/pathfinding.test.js && node tests/navigationSystem.test.js && node tests/navigationAudit.test.js",
+    "test": "node tests/core.test.js && node tests/pathfinding.test.js && node tests/navigationSystem.test.js && node tests/navigationAudit.test.js && node tests/panelRegression.test.js",
     "build": "node build.js"
   },
   "keywords": [
