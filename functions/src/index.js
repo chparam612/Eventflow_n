@@ -12,9 +12,11 @@ import {
 
 initializeApp();
 const db = getDatabase();
-const bq = new BigQuery({
-  projectId: process.env.BIGQUERY_PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || undefined
-});
+const bigQueryProjectId =
+  process.env.BIGQUERY_PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '';
+const bq = bigQueryProjectId
+  ? new BigQuery({ projectId: bigQueryProjectId })
+  : new BigQuery();
 
 function resolveAuthRole(auth = {}) {
   const email = String(auth.token?.email || '').toLowerCase();
@@ -53,7 +55,7 @@ async function insertBigQueryRow(row, eventId) {
       code: error?.code || 'unknown',
       message: error?.message || String(error)
     });
-    throw new HttpsError('internal', 'BigQuery insert failed');
+    throw new HttpsError('internal', 'Failed to insert telemetry event to BigQuery. Check telemetry_bigquery_insert_failed logs.');
   }
 }
 

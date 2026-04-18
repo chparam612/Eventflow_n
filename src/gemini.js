@@ -7,7 +7,7 @@
 // Values are environment-injected by build.js from .env.
 const GEMINI_KEY = 'YOUR_GEMINI_KEY_HERE';
 const VERTEX_PROJECT_ID = 'YOUR_VERTEX_PROJECT_ID';
-const VERTEX_LOCATION = 'asia-south1';
+const VERTEX_LOCATION = 'YOUR_VERTEX_LOCATION';
 const VERTEX_MODEL = 'gemini-2.0-flash-001';
 
 function getVertexUrl() {
@@ -32,7 +32,9 @@ async function callGemini(prompt, maxTokens = 200) {
     !GEMINI_KEY ||
     GEMINI_KEY === 'YOUR_GEMINI_KEY_HERE' ||
     !VERTEX_PROJECT_ID ||
-    VERTEX_PROJECT_ID === 'YOUR_VERTEX_PROJECT_ID'
+    VERTEX_PROJECT_ID === 'YOUR_VERTEX_PROJECT_ID' ||
+    !VERTEX_LOCATION ||
+    VERTEX_LOCATION === 'YOUR_VERTEX_LOCATION'
   ) {
     return null; // Key not set — use fallback
   }
