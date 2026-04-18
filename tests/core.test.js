@@ -790,24 +790,29 @@ await test('56. Firebase config has no placeholder values', () => {
     'Firebase config must have databaseURL — required for RTDB');
 });
 
-await test('57. Gemini fallback never returns empty or generic error', () => {
-  const userMessages = [
-    'exit gate',
-    'khana kahan milega',
-    'crowd kahan hai',
-    'hello'
-  ];
-  const mockContext = {
-    zones: [
-      { name: 'North Stand', status: 'CLEAR', density: '45%' },
-      { name: 'East Stand', status: 'CRITICAL', density: '92%' }
-    ]
-  };
-  userMessages.forEach(msg => {
-    assert(msg.length > 0, 'Test message must not be empty');
+await test('57. Gemini fallback never returns empty or generic error', async () => {
+  const { askAttendee } = await import('../src/gemini.js');
+  const msg1 = await askAttendee('Best time for food?', {
+    north: 0.42,
+    east: 0.91
   });
-  assert(mockContext.zones.length === 2,
-    'Mock context must have zones for fallback logic');
+  const msg2 = await askAttendee('crowd kahan hai', {
+    zones: [
+      { name: 'North Stand', status: 'CLEAR', density: '42%' },
+      { name: 'East Stand', status: 'CRITICAL', density: '91%' }
+    ]
+  });
+
+  assert(typeof msg1 === 'string' && msg1.length > 0, 'Food fallback response must be non-empty');
+  assert(typeof msg2 === 'string' && msg2.length > 0, 'Crowd fallback response must be non-empty');
+  assert(
+    !msg1.includes('Gate B (North entrance) is least crowded right now'),
+    'Density-map context should not collapse to static default response'
+  );
+  assert(
+    msg2.toLowerCase().includes('avoid') || msg2.toLowerCase().includes('clear'),
+    'Crowd-aware fallback should include crowd guidance'
+  );
 });
 
 await test('58. Accessibility: aria-live attributes defined in source', () => {

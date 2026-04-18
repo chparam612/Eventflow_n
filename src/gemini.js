@@ -51,6 +51,25 @@ async function callGemini(prompt, maxTokens = 200) {
   }
 }
 
+function normalizeCrowdZones(crowdContext) {
+  if (!crowdContext || typeof crowdContext !== 'object') return [];
+
+  if (Array.isArray(crowdContext.zones)) return crowdContext.zones;
+
+  return Object.entries(crowdContext)
+    .filter(([, value]) => typeof value === 'number' && Number.isFinite(value))
+    .map(([zoneId, density]) => {
+      const norm = Math.max(0, Math.min(1, density));
+      const status = norm >= 0.8 ? 'CRITICAL' : norm >= 0.6 ? 'BUSY' : 'CLEAR';
+      const zoneName = zoneId.charAt(0).toUpperCase() + zoneId.slice(1) + ' Stand';
+      return {
+        name: zoneName,
+        status,
+        density: `${Math.round(norm * 100)}%`
+      };
+    });
+}
+
 // ─── Attendee Chat ─────────────────────────────────────────────────────────
 export async function askAttendee(message, crowdContext) {
   const ctx = crowdContext ? 
@@ -65,11 +84,12 @@ export async function askAttendee(message, crowdContext) {
     throw new Error('empty response');
   } catch(e) {
     // Use live crowd context for intelligent fallback
-    if (crowdContext && crowdContext.zones) {
-      const clear = crowdContext.zones
+    const zones = normalizeCrowdZones(crowdContext);
+    if (zones.length > 0) {
+      const clear = zones
         .filter(z => z.status === 'CLEAR')
         .map(z => z.name);
-      const busy = crowdContext.zones
+      const busy = zones
         .filter(z => z.status === 'CRITICAL' || z.status === 'BUSY')
         .map(z => z.name);
 
