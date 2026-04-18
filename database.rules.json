@@ -2,21 +2,47 @@
   "rules": {
     "zones": {
       ".read": "auth != null",
-      ".write": "auth != null && auth.token.email.contains('control')"
+      ".write": "auth != null && auth.token.email.matches(/.*control.*/)",
+      "$zoneId": {
+        ".validate": "newData.hasChildren(['density','status','updatedAt'])"
+      }
     },
     "staff": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.email.matches(/.*control.*/)",
       "$uid": {
-        ".write": "auth != null && auth.uid == $uid"
+        ".read": "auth != null && (auth.uid == $uid || auth.token.email.matches(/.*control.*/))",
+        ".write": "auth != null && auth.uid == $uid",
+        ".validate": "newData.hasChildren(['zone','status','online','updatedAt']) && newData.child('zone').isString() && newData.child('status').isString()"
       }
     },
     "instructions": {
       ".read": "auth != null",
-      ".write": "auth != null && auth.token.email.contains('control')"
+      "$instructionId": {
+        ".write": "auth != null && auth.token.email.matches(/.*control.*/)",
+        "acked": {
+          "$uid": {
+            ".write": "auth != null && auth.uid == $uid && root.child('staff/' + auth.uid + '/zone').val() == data.parent().parent().child('zoneId').val()",
+            ".validate": "newData.isNumber()"
+          }
+        }
+      }
+    },
+    "staffReports": {
+      "$reportId": {
+        ".read": "auth != null && auth.token.email.matches(/.*control.*/)",
+        ".write": "auth != null && newData.child('uid').val() == auth.uid && newData.hasChildren(['uid','zoneId','type','createdAt'])",
+        ".validate": "newData.child('zoneId').val() == root.child('staff/' + auth.uid + '/zone').val()"
+      }
     },
     "nudges": {
       ".read": "auth != null",
-      ".write": "auth != null && auth.token.email.contains('control')"
+      ".write": "auth != null && auth.token.email.matches(/.*control.*/)"
+    },
+    "emergency": {
+      "status": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.token.email.matches(/.*control.*/)"
+      }
     },
     "attendees": {
       "$uid": {
@@ -26,7 +52,21 @@
     },
     "feedback": {
       ".write": "auth != null",
-      ".read": "auth != null && auth.token.email.contains('control')"
+      ".read": "auth != null && auth.token.email.matches(/.*control.*/)"
+    },
+    "analytics": {
+      "events": {
+        "$eventId": {
+          ".write": "auth != null && newData.hasChildren(['type','payload','timestamp'])",
+          ".read": "auth != null && auth.token.email.matches(/.*control.*/)"
+        }
+      }
+    },
+    "auditTrail": {
+      "$entryId": {
+        ".write": "auth != null && newData.hasChildren(['action','actor','timestamp'])",
+        ".read": "auth != null && auth.token.email.matches(/.*control.*/)"
+      }
     }
   }
 }

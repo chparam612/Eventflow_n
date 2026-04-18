@@ -8,7 +8,7 @@ import {
 } from '/src/simulation.js';
 import { 
   saveAttendeeData, saveFeedback, listenZones, listenNudges, 
-  listenEmergency 
+  listenEmergency, pushPerformanceMetric
 } from '/src/firebase.js';
 import { renderAIChat, initAIChat } from './aiChat.js';
 import { rankBestExit } from '/src/evacuationEngine.js';
@@ -984,6 +984,7 @@ function initDuringMap() {
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
 export async function init(navigate) {
+  const initStart = performance.now();
   // Silent anonymous authentication to establish Firebase database write permissions
   try {
     await loginAnonymously();
@@ -1020,11 +1021,23 @@ export async function init(navigate) {
     // Update zone strips if visible
     const strip = document.getElementById('plan-zone-strip') || document.getElementById('during-zone-strip');
     if (strip) strip.innerHTML = zoneStrip(currentDensities);
+    scheduleUIRefresh();
   });
   cleanupFns.push(unZones);
 
   // Init AI chat
   initAIChat(() => currentDensities);
+
+  let refreshScheduled = false;
+  function scheduleUIRefresh() {
+    if (refreshScheduled) return;
+    refreshScheduled = true;
+    requestAnimationFrame(() => {
+      refreshScheduled = false;
+      updateSafeExitUI();
+      updateGlobalDensityBadge();
+    });
+  }
 
   function updateGlobalDensityBadge() {
     const el = document.getElementById('att-global-density');
@@ -1090,7 +1103,7 @@ export async function init(navigate) {
     } else {
       if (banner) banner.remove();
     }
-    updateSafeExitUI();
+    scheduleUIRefresh();
   });
   cleanupFns.push(unEmerg);
 
@@ -1105,17 +1118,13 @@ export async function init(navigate) {
     }
   }
 
-  function updatePolling() {
-      updateSafeExitUI();
-      updateGlobalDensityBadge();
-  }
-
-  // Polling for UI
-  const evacInt = setInterval(updatePolling, 5000);
+  // Lightweight fallback polling for missed UI refresh in background tabs
+  const evacInt = setInterval(scheduleUIRefresh, 15000);
   cleanupFns.push(() => clearInterval(evacInt));
   
   // Initial immediate call
-  updatePolling();
+  scheduleUIRefresh();
+  pushPerformanceMetric('attendee_init_ms', Math.round(performance.now() - initStart), { panel: 'attendee' }).catch(() => {});
 
   return () => {
     cleanupFns.forEach(fn => { try { fn(); } catch(e) {} });

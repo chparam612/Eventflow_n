@@ -5,17 +5,20 @@
 import { getCurrentUser, isControlUser, logout } from '/src/auth.js';
 import {
   writeZone, pushInstruction, pushNudge,
-  listenZones, listenAllStaff, listenEmergency, setEmergencyStatus
+  listenZones, listenAllStaff, listenEmergency, setEmergencyStatus,
+  pushAnalyticsEvent, pushPerformanceMetric, invokeCloudWorkflow
 } from '/src/firebase.js';
 import {
   simulateTick, setTick, getTick, getTickLabel,
-  getZoneDensity, getZoneStatus, getStatusColor, ZONES
+  getZoneDensity, getZoneStatus, ZONES
 } from '/src/simulation.js';
 import { getAIInsights } from '/src/gemini.js';
 import { predictFutureDensity, detectSurgeRisk } from '/src/predictiveEngine.js';
 import { rankBestExit } from '/src/evacuationEngine.js';
 import { calculateDensityColor } from '/src/heatmapEngine.js';
 import { calculateTotalVisitors, calculateAverageDensity, findPeakZone, calculateGateUtilization, estimateAverageWaitTime } from '/src/analyticsEngine.js';
+import { calculateEvacuationRoutes, getEmergencyMessage } from '/src/emergencyEngine.js';
+import { buildBigQueryEvent, classifySurgeRisk, invokeCloudEndpoint } from '/src/cloudServices.js';
 
 // NMS approximate bounding coords for each zone overlay
 const ZONE_BOUNDS = {
@@ -415,6 +418,7 @@ export async function init(navigate) {
   let currentEmergency = { active: false };
   let densities = {}; // TASK 1: Declare shared densities object
   let heatmapEnabled = true; // Default ON
+  let lastZoneSnapshotHash = '';
 
   // ── DOM refs ──
   const scrubber   = document.getElementById('ctrl-scrubber');
@@ -423,6 +427,38 @@ export async function init(navigate) {
   const totalEl    = document.getElementById('ctrl-total');
   const metricAvg  = document.getElementById('metric-avg');
   const metricNudges = document.getElementById('metric-nudges');
+  const dashboardInitStart = performance.now();
+
+  function throttle(fn, waitMs = 800) {
+    let last = 0;
+    let timeout = null;
+    let queuedArgs = null;
+    const run = () => {
+      timeout = null;
+      last = Date.now();
+      fn(...(queuedArgs || []));
+      queuedArgs = null;
+    };
+    return (...args) => {
+      queuedArgs = args;
+      const now = Date.now();
+      const remaining = waitMs - (now - last);
+      if (remaining <= 0) {
+        if (timeout) clearTimeout(timeout);
+        run();
+      } else if (!timeout) {
+        timeout = setTimeout(run, remaining);
+      }
+    };
+  }
+
+  const refreshLiveUI = throttle((liveDensities, predictions) => {
+    updateMapOverlays(liveDensities, predictions);
+    updateMetrics(liveDensities);
+    renderAlerts(liveDensities);
+    renderPredictiveAlerts(predictions);
+    updateAnalyticsDashboard(liveDensities);
+  }, 1000);
 
   // ── Helpers ──
   function getInsightColor(type) {
@@ -785,6 +821,13 @@ export async function init(navigate) {
         zone.id,
         `${name} is getting crowded. Alternative routes are available nearby.`
       );
+      await pushAnalyticsEvent('auto_alert_dispatched', buildBigQueryEvent('auto_alert_dispatched', {
+        zoneId: zone.id,
+        zoneName: name,
+        densityPercent: pct,
+        riskClass: classifySurgeRisk(zone.density, pct)
+      }));
+      await invokeCloudEndpoint('/classifySurge', { zoneId: zone.id, densityPercent: pct });
       
       console.log('Auto-alert sent for:', name, pct + '%');
     }
@@ -815,10 +858,7 @@ export async function init(navigate) {
   async function doTick() {
     const densities = simulateTick();
     const predictions = calculatePredictions(densities);
-    updateMapOverlays(densities, predictions);
-    updateMetrics(densities);
-    renderAlerts(densities);
-    renderPredictiveAlerts(predictions);
+    refreshLiveUI(densities, predictions);
 
     // Update scrubber
     const tick = getTick();
@@ -832,9 +872,7 @@ export async function init(navigate) {
     if (ctrlTimeEl) ctrlTimeEl.textContent = getTickLabel();
 
     // Write to Firebase
-    for (const [id, d] of Object.entries(densities)) {
-      await writeZone(id, d, getZoneStatus(d));
-    }
+    await Promise.all(Object.entries(densities).map(([id, d]) => writeZone(id, d, getZoneStatus(d))));
 
     await autoAlertCheck(densities);
   }
@@ -860,29 +898,33 @@ export async function init(navigate) {
       import('/src/simulation.js').then(m => res(m.getZoneDensity()));
     });
     const predictions = calculatePredictions(densities);
-    updateMapOverlays(densities, predictions);
-    updateMetrics(densities);
-    renderAlerts(densities);
-    renderPredictiveAlerts(predictions);
-    for (const [id, d] of Object.entries(densities)) {
-      await writeZone(id, d, getZoneStatus(d));
-    }
+    refreshLiveUI(densities, predictions);
+    await Promise.all(Object.entries(densities).map(([id, d]) => writeZone(id, d, getZoneStatus(d))));
   });
 
   // ── Firebase: listen zones ──
   const unListenZones = listenZones((zones) => {
     // TASK 1: Populate densities with fallback
     if (!zones) zones = {};
-    Object.entries(zones).forEach(([id, z]) => { 
+    Object.entries(zones).forEach(([id, z]) => {
       densities[id] = z.density || 0; 
     });
+
+    const snapshotHash = JSON.stringify(densities);
+    if (snapshotHash === lastZoneSnapshotHash) return;
+    lastZoneSnapshotHash = snapshotHash;
+
+    const updateLagSamples = Object.values(zones)
+      .map(z => Date.now() - (z?.updatedAt || Date.now()))
+      .filter(v => Number.isFinite(v) && v >= 0);
+    if (updateLagSamples.length) {
+      const avgLagMs = Math.round(updateLagSamples.reduce((a, b) => a + b, 0) / updateLagSamples.length);
+      pushPerformanceMetric('control_zone_update_lag_ms', avgLagMs, { zoneCount: Object.keys(zones).length }).catch(() => {});
+    }
     
     if (Object.keys(densities).length > 0) {
       const predictions = calculatePredictions(densities);
-      updateMapOverlays(densities, predictions);
-      updateMetrics(densities);
-      renderAlerts(densities);
-      renderPredictiveAlerts(predictions);
+      refreshLiveUI(densities, predictions);
     }
   });
   cleanupFirebase.push(unListenZones);
@@ -911,6 +953,8 @@ export async function init(navigate) {
       
       modal.style.display = 'none';
       await setEmergencyStatus(true, type, zone);
+      await invokeCloudWorkflow('/emergencyValidate', { type, zone, activatedBy: user.email });
+      await pushAnalyticsEvent('emergency_activated', { type, zone, activatedBy: user.email });
       
       // TASK 6: Logging
       console.log("Emergency Activated:", type);
@@ -998,7 +1042,7 @@ export async function init(navigate) {
     const predictions = calculatePredictions(densities);
     updateMapOverlays(densities, predictions);
     updateAnalyticsDashboard(densities);
-  }, 3000);
+  }, 8000);
   cleanupFirebase.push(() => clearInterval(pulseInt));
 
   // ── Quick instruction buttons ──
@@ -1015,6 +1059,7 @@ export async function init(navigate) {
     const msg  = document.getElementById('ctrl-instr-text')?.value?.trim();
     if (!msg) return;
     await pushInstruction(zone, msg, user.email);
+    await pushAnalyticsEvent('manual_staff_dispatch', { zone, sender: user.email, messageLength: msg.length });
     const conf = document.getElementById('ctrl-send-confirm');
     if (conf) { conf.style.display = 'block'; setTimeout(() => conf.style.display = 'none', 2500); }
     document.getElementById('ctrl-instr-text').value = '';
@@ -1026,6 +1071,7 @@ export async function init(navigate) {
     const msg  = document.getElementById('ctrl-instr-text')?.value?.trim()
               || 'Please move toward Gate ' + (ZONES[zone]?.gate || 'B') + ' to reduce crowding.';
     await pushNudge(zone, msg);
+    await pushAnalyticsEvent('manual_attendee_nudge', { zone, sender: user.email, messageLength: msg.length });
     nudgesSent++;
     if (metricNudges) metricNudges.textContent = nudgesSent;
     const conf = document.getElementById('ctrl-send-confirm');
@@ -1041,6 +1087,7 @@ export async function init(navigate) {
 
   // ── Logout ──
   document.getElementById('ctrl-logout-btn')?.addEventListener('click', () => logout());
+  pushPerformanceMetric('control_dashboard_init_ms', Math.round(performance.now() - dashboardInitStart), { user: user.email }).catch(() => {});
 
   // ── Cleanup ──
   return () => {

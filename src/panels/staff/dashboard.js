@@ -5,7 +5,7 @@
 import { getCurrentUser, isStaffUser, logout } from '/src/auth.js';
 import { 
   writeStaffStatus, listenInstructions, pushInstruction, 
-  listenEmergency 
+  listenEmergency, ackInstruction, pushStaffReport, pushPerformanceMetric
 } from '/src/firebase.js';
 import { setStaffOverride, clearStaffOverride, ZONES } from '/src/simulation.js';
 
@@ -203,32 +203,49 @@ export async function init(navigate) {
   let zoneStatus = 'clear';
   const reports = [];
   let cleanupInstructions = null;
+  let latestInstruction = null;
 
   // ── Write initial Firebase status ──
   await writeStaffStatus(uid, zone, 'clear', true);
+  const startTime = performance.now();
 
   // ── Listen for instructions ──
-  const listenFn = await import('/src/firebase.js').then(m => m.listenInstructions);
-  cleanupInstructions = listenFn(zone, (items) => {
+  cleanupInstructions = listenInstructions(zone, (items) => {
     const latest = items[0];
     const textEl = document.getElementById('instruction-text');
     const ackBtn = document.getElementById('ack-btn');
     if (!textEl) return;
     if (latest) {
+      latestInstruction = latest;
       textEl.textContent = latest.message;
       textEl.style.color = 'var(--yellow)';
       ackBtn.style.display = 'inline-block';
-      ackBtn.disabled = false;
       ackBtn.dataset.id = latest.id;
+      const alreadyAcked = Boolean(latest.acked && latest.acked[uid]);
+      if (alreadyAcked) {
+        ackBtn.textContent = '✓ Acknowledged';
+        ackBtn.style.background = 'rgba(0,196,154,0.05)';
+        ackBtn.style.color = 'var(--text-muted)';
+        ackBtn.disabled = true;
+      } else {
+        ackBtn.textContent = 'Acknowledge';
+        ackBtn.style.background = 'rgba(0,196,154,0.1)';
+        ackBtn.style.color = '#00C49A';
+        ackBtn.disabled = false;
+      }
     } else {
+      latestInstruction = null;
       textEl.textContent = 'No instructions — all clear ✓';
       textEl.style.color = 'var(--text-primary)';
       ackBtn.style.display = 'none';
     }
-  });
+  }, { limit: 10, since: Date.now() - 86400000 });
 
   // ── Acknowledge button ──
-  document.getElementById('ack-btn')?.addEventListener('click', function () {
+  document.getElementById('ack-btn')?.addEventListener('click', async function () {
+    const instructionId = this.dataset.id;
+    if (!instructionId) return;
+    await ackInstruction(instructionId, uid, zone);
     this.textContent = '✓ Acknowledged';
     this.style.background = 'rgba(0,196,154,0.05)';
     this.style.color = 'var(--text-muted)';
@@ -286,6 +303,7 @@ export async function init(navigate) {
           <span style="font-size:0.72rem;color:var(--text-muted);">${r.time}</span>
         </div>`).join('');
     }
+    pushStaffReport(uid, zone, type, msgs[type] || type).catch(() => {});
   };
 
   document.querySelectorAll('.quick-report-btn').forEach(btn => {
@@ -307,6 +325,7 @@ export async function init(navigate) {
     const txt = document.getElementById('custom-report-text')?.value?.trim();
     if (!txt) return;
     addReport('other');
+    pushStaffReport(uid, zone, 'other', txt).catch(() => {});
     document.getElementById('custom-report-text').value = '';
     document.getElementById('custom-report-box').style.display = 'none';
   });
@@ -335,6 +354,7 @@ export async function init(navigate) {
   });
 
   // ── Cleanup ──
+  pushPerformanceMetric('staff_dashboard_init_ms', Math.round(performance.now() - startTime), { zone }).catch(() => {});
   return () => {
     if (cleanupInstructions) cleanupInstructions();
     if (unListenEmerg) unListenEmerg();
